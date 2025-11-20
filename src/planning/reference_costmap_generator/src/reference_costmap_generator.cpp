@@ -3,7 +3,7 @@
 namespace planning
 {
     ReferenceCostmapGenerator::ReferenceCostmapGenerator()
-        : nh_(""), private_nh_("~")
+        : nh_(""), private_nh_("~"), map_received_(false), ref_path_received_(false)
     {
         // load parameters 
         private_nh_.param<double>("map_resolution_scale", map_resolution_scale_, 1.0);
@@ -36,6 +36,7 @@ namespace planning
 
     void ReferenceCostmapGenerator::refPathCallback(const nav_msgs::Path::ConstPtr& msg)
     {
+        ROS_INFO_THROTTLE(1.0, "Ref path callback triggered");
         ref_path_received_ = true;
 
         // save the latest reference path as nav_msgs::Path type
@@ -60,10 +61,20 @@ namespace planning
 
     void ReferenceCostmapGenerator::mapCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg)
     {
+        ROS_INFO_THROTTLE(1.0, "Map callback triggered");
         map_received_ = true;
 
         // save the latest map as grid_map::GridMap type
-        grid_map::GridMapRosConverter::fromOccupancyGrid(*msg, "map", latest_map_);
+        bool success = grid_map::GridMapRosConverter::fromOccupancyGrid(*msg, "map", latest_map_);
+        if (!success) {
+            std::cerr << "Failed to convert OccupancyGrid to GridMap" << std::endl;
+        } else {
+            if (ref_path_received_)
+            {
+                publishDistanceErrorMap();
+                publishReferenceYawMap();
+            }
+        }
     }
 
     void ReferenceCostmapGenerator::publishGoalPoseArrowMarker()

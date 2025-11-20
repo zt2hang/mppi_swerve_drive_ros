@@ -35,7 +35,7 @@ controller:
   name: "mppi_3d_a"
   control_interval: 0.05 # [s]
   num_samples: 3000 # number of samples
-  prediction_horizon: 30 # [steps]
+  prediction_horizon: 50 # [steps]
   step_len_sec: 0.033 # [s]
   param_exploration: 0.1
   param_lambda: 200.0

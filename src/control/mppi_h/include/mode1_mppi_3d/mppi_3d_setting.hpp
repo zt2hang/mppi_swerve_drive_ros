@@ -100,15 +100,21 @@ namespace controller_mppi_3d
         double cost = 0.0;
 
         // only when the vehicle is not close to the goal
-        if( std::sqrt( pow(goal_state.x - state.x, 2) + pow(goal_state.y - state.y, 2) ) > param.navigation.xy_goal_tolerance )
-        {
+        // for circular or square path tracking
+        // if( std::sqrt( pow(goal_state.x - state.x, 2) + pow(goal_state.y - state.y, 2) ) > param.navigation.xy_goal_tolerance )
+        // {
+
+        // if( std::sqrt( pow(goal_state.x - state.x, 2) + pow(goal_state.y - state.y, 2) ) > param.navigation.xy_goal_tolerance )
+        // {
             // track target velocity (considering only aligned component to the reference path)
             if (ref_yaw_map.isInside(grid_map::Position(state.x, state.y)))
             {
                 double ref_yaw = ref_yaw_map.atPosition("ref_yaw", grid_map::Position(state.x, state.y), grid_map::InterpolationMethods::INTER_NEAREST);
                 double diff_yaw = std::remainder(state.yaw - ref_yaw, 2 * M_PI); // diff_yaw is in [-pi, pi]
                 Eigen::Matrix<double, 2, 1> ref_vel_direction;
-                ref_vel_direction << std::cos(diff_yaw), std::sin(diff_yaw);
+                // for circular or square path tracking
+                ref_vel_direction << std::cos(diff_yaw), -std::sin(diff_yaw);
+                // ref_vel_direction << std::cos(diff_yaw), std::sin(diff_yaw);
                 Eigen::Matrix<double, 2, 1> current_vel;
                 current_vel << control_input.vx, control_input.vy;
                 double ref_aligned_vel = ref_vel_direction.dot(current_vel);
@@ -122,7 +128,8 @@ namespace controller_mppi_3d
                 double diff_yaw = std::remainder(state.yaw - ref_yaw, 2 * M_PI); // diff_yaw is in [-pi, pi]
                 cost += param.controller.weight_angular_error * diff_yaw * diff_yaw;
             }
-        }
+        // }
+        // }
 
         // avoid collision
         if (collision_costmap.isInside(grid_map::Position(state.x, state.y)))

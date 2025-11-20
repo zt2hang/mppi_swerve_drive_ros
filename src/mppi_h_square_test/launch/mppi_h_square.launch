@@ -1,0 +1,22 @@
+<launch>
+    <!-- Load MPPI_H Parameters -->
+    <rosparam command="load" file="$(find mppi_h_square_test)/config/mppi_h_params.yaml" ns="mppi_h_square_tracker" />
+
+    <!-- Launch MPPI_H Node -->
+    <node pkg="mppi_h" type="mppi_h_node" name="mppi_h_square_tracker" output="screen">
+    </node>
+
+    <!-- Launch Reference Costmap Generator -->
+    <node pkg="reference_costmap_generator" type="reference_costmap_generator_node" name="reference_costmap_generator" output="screen">
+        <param name="map_resolution_scale" value="1.0" />
+        <param name="ref_path_topic" value="/move_base/NavfnROS/plan" />
+        <param name="map_topic" value="/map" />
+        <param name="distance_error_map_topic" value="/distance_error_map" />
+        <param name="ref_yaw_map_topic" value="/ref_yaw_map" />
+    </node>
+
+    <!-- Launch Tester Node (Simulator + Visualizer) -->
+    <node pkg="mppi_h_square_test" type="square_path_tracking_mppi_h.py" name="square_path_tracking_tester" output="screen">
+        <param name="center_square_side_len" value="20.0" />
+    </node>
+</launch>

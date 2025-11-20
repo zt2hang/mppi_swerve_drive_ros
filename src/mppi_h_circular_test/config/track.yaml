@@ -1,0 +1,11 @@
+radius: 8.25
+max_speed: 2.0
+min_speed: -0.5
+max_angular_speed: 2.0
+min_angular_speed: -2.0
+track_width: 3.5
+prediction_horizon: 50
+control_gain: 1.0
+weight_matrix:
+  Q: [100.0, 100.0, 10.0]
+  R: [10.0, 5.0]

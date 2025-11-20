@@ -4,11 +4,11 @@
 
   <!-- often changed arguments -->
   <arg name="gazebo_world_name" default="maze" /> <!-- empty, empty_garden, cylinder_garden, maze -->
-  <arg name="joy_operation" default="true" />
+  <arg name="joy_operation" default="false" />
   <arg name="local_planner" default="mppi_h" /> <!-- mppi_3d_a, mppi_3d_b, mppi_4d, mppi_h -->
 
   <!-- arguments -->
-  <arg name="workspace" default="$(env HOME)/mppi_swerve_drive_ros" />
+  <arg name="workspace" default="$(env HOME)/planner_code/mppi_swerve_drive_ros" />
   <arg name="rvizconfig" default="$(arg workspace)/data/rviz/navigation.rviz" />
   <arg name="open_rviz" default="true"/>
   <rosparam param="/use_sim_time">true</rosparam> <!-- set use_sim_time true to syncronize time with gazebo -->
