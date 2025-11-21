@@ -14,6 +14,8 @@
     <xacro:property name="l_r" value="0.5" />
     <xacro:property name="d_l" value="0.5" />
     <xacro:property name="d_r" value="0.5" />
+    <xacro:arg name="wheel_friction" default="0.8" />
+    <xacro:property name="wheel_friction" value="$(arg wheel_friction)" />
 
     <!-- # define macros -->
 
@@ -33,6 +35,9 @@
         <gazebo reference="${ref}">
             <mu1>${mu}</mu1>
             <mu2>${mu}</mu2>
+            <kp>1000000.0</kp>
+            <kd>100.0</kd>
+            <minDepth>0.001</minDepth>
         <xacro:insert_block name="color" />
         </gazebo>
     </xacro:macro>
@@ -151,7 +156,7 @@
         <cylinder radius="0.025" length="0.025" />
         <inertia ixx="0.01" iyy="0.01" izz="0.01" ixy="0" ixz="0" iyz="0"/>
 	</xacro:link_generator>
-    <xacro:gazebo_material ref="${name}_wheel_base_link" mu="0.8">
+    <xacro:gazebo_material ref="${name}_wheel_base_link" mu="${wheel_friction}">
 		<material>Gazebo/Black</material>
     </xacro:gazebo_material>
 	<xacro:fixed_joint name="${name}_wheel_joint" parent="${parent}" child="${name}_wheel_base_link">
@@ -163,7 +168,7 @@
 		<cylinder radius="0.01" length="0.1"/>
         <inertia ixx="0.01" iyy="0.01" izz="0.01" ixy="0" ixz="0" iyz="0"/>
 	</xacro:link_generator>
-    <xacro:gazebo_material ref="${name}_wheel_suspension" mu="0.8">
+    <xacro:gazebo_material ref="${name}_wheel_suspension" mu="${wheel_friction}">
 		<material>Gazebo/Red</material>
     </xacro:gazebo_material>
     <xacro:sus_joint name="${name}_wheel_suspension" parent="${name}_wheel_base_link" child="${name}_wheel_suspension">
@@ -176,7 +181,7 @@
 		<cylinder radius="${tire_radius/2.0}" length="${tire_thickness/2.0}"/>
         <inertia ixx="0.01" iyy="0.01" izz="0.01" ixy="0" ixz="0" iyz="0"/>
 	</xacro:link_generator>
-    <xacro:gazebo_material ref="${name}_wheel_steer" mu="0.8">
+    <xacro:gazebo_material ref="${name}_wheel_steer" mu="${wheel_friction}">
 		<material>Gazebo/GreyTransparent</material>
     </xacro:gazebo_material>
 	<xacro:steer_joint name="${name}_wheel_steer" parent="${name}_wheel_suspension" child="${name}_wheel_steer">
@@ -189,7 +194,7 @@
 		<cylinder radius="${tire_radius}" length="${tire_thickness}"/>
         <inertia ixx="0.0029167" iyy="0.0029167" izz="0.0056250" ixy="0" ixz="0" iyz="0"/>
 	</xacro:link_generator>
-    <xacro:gazebo_material ref="${name}_wheel_rotor" mu="0.8">
+    <xacro:gazebo_material ref="${name}_wheel_rotor" mu="${wheel_friction}">
 		<material>Gazebo/DarkGrey</material>
     </xacro:gazebo_material>
 	<xacro:rotor_joint name="${name}_wheel_rotor" parent="${name}_wheel_steer" child="${name}_wheel_rotor">

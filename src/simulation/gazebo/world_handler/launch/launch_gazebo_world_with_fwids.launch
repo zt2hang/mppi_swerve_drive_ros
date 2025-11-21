@@ -3,9 +3,10 @@
   <!-- load the fwids vehicle model -->
   <arg name="open_rviz" default="false" />
   <arg name="model" default="$(find world_handler)/xacro/fwids_vehicle.xacro"/>
-  <arg name="gazebo_world_name" default="maze"/> <!-- empty, empty_garden, cylinder_garden, maze -->
+  <arg name="gazebo_world_name" default="maze"/> <!-- empty, empty_garden, cylinder_garden, maze, tiles -->
   <arg name="rvizconfig" default="$(find world_handler)/rviz/fwids_vehicle.rviz" />
-  <param name="robot_description" command="$(find xacro)/xacro $(arg model) --inorder"/>
+  <arg name="wheel_friction" default="0.8" />
+  <param name="robot_description" command="$(find xacro)/xacro $(arg model) wheel_friction:=$(arg wheel_friction) --inorder"/>
 
   <!-- launch gazebo world -->
   <include file="$(find gazebo_ros)/launch/empty_world.launch">

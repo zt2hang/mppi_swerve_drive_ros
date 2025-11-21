@@ -1,0 +1,29 @@
+<launch>
+  <!-- Arguments -->
+  <arg name="gazebo_world_name" default="tiles" />
+  <arg name="wheel_friction" default="0.8" />
+  <arg name="side_length" default="10.0" />
+  <arg name="turn_radius" default="0.2" />
+  <arg name="workspace" default="$(env HOME)/planner_code/mppi_swerve_drive_ros" />
+
+  <!-- Calculate initial pose based on side_length -->
+  <!-- Start at (0, -side_length/2, 0) -->
+  <!-- Note: We cannot do math in launch file easily for args passed to other launch files unless we use eval -->
+  
+  <!-- Launch Navigation -->
+  <include file="$(arg workspace)/launch/navigation.launch">
+    <arg name="gazebo_world_name" value="$(arg gazebo_world_name)" />
+    <arg name="wheel_friction" value="$(arg wheel_friction)" />
+    <arg name="initial_pose_x" value="0.0" />
+    <arg name="initial_pose_y" value="0.0" />
+    <arg name="initial_pose_yaw" value="0.0" />
+    <arg name="use_amcl" value="false" />
+  </include>
+
+  <!-- Publish Square Path -->
+  <node pkg="mppi_h_square_test" type="publish_square_path.py" name="square_path_publisher" output="screen">
+    <param name="side_length" value="$(arg side_length)" />
+    <param name="turn_radius" value="$(arg turn_radius)" />
+  </node>
+
+</launch>

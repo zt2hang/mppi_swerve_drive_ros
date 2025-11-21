@@ -3,9 +3,11 @@
   <!-- ##### SETTINGS { ##### -->
 
   <!-- often changed arguments -->
-  <arg name="gazebo_world_name" default="maze" /> <!-- empty, empty_garden, cylinder_garden, maze -->
+  <arg name="gazebo_world_name" default="tiles" /> <!-- empty, empty_garden, cylinder_garden, maze, tiles, maze_tiles -->
   <arg name="joy_operation" default="false" />
   <arg name="local_planner" default="mppi_h" /> <!-- mppi_3d_a, mppi_3d_b, mppi_4d, mppi_h -->
+  <arg name="wheel_friction" default="0.8" />
+  <arg name="use_amcl" default="true" />
 
   <!-- arguments -->
   <arg name="workspace" default="$(env HOME)/planner_code/mppi_swerve_drive_ros" />
@@ -34,6 +36,7 @@
     <arg name="use_joystick" value="$(arg joy_operation)" />
     <arg name="use_vel_driver" value="false" />
     <arg name="open_rviz" value="false" />
+    <arg name="wheel_friction" value="$(arg wheel_friction)" />
   </include>
 
   <!-- map server -->
@@ -45,13 +48,20 @@
   </include>
 
   <!-- amcl -->
-  <node pkg="amcl" type="amcl" name="amcl">
-      <param name="initial_pose_x"            value="$(arg initial_pose_x)"/>
-      <param name="initial_pose_y"            value="$(arg initial_pose_y)"/>
-      <param name="initial_pose_a"            value="$(arg initial_pose_yaw)"/>
-      <remap from="scan"                      to="$(arg scan_topic)"/>
-      <rosparam file="$(arg workspace)/config/amcl.yaml" command="load" />
-  </node>
+  <group if="$(arg use_amcl)">
+    <node pkg="amcl" type="amcl" name="amcl">
+        <param name="initial_pose_x"            value="$(arg initial_pose_x)"/>
+        <param name="initial_pose_y"            value="$(arg initial_pose_y)"/>
+        <param name="initial_pose_a"            value="$(arg initial_pose_yaw)"/>
+        <remap from="scan"                      to="$(arg scan_topic)"/>
+        <rosparam file="$(arg workspace)/config/amcl.yaml" command="load" />
+    </node>
+  </group>
+
+  <!-- fake localization (static tf map->odom) -->
+  <group unless="$(arg use_amcl)">
+    <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_odom" args="0 0 0 0 0 0 map odom" />
+  </group>
 
   <!-- rviz -->
   <group if="$(arg open_rviz)"> 
