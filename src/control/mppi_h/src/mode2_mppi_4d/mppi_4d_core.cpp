@@ -66,6 +66,7 @@ MPPI4DCore::MPPI4DCore(param::CommonParam& param_common, param::MPPI4DParam& par
 
     // initialize adaptive estimator
     adaptive_estimator_ = new mppi_h_adaptive::AdaptiveEstimator();
+    use_estimator_ = param_.controller.use_adaptive_estimator;
     last_control_cmd_estimator_.setZero();
     avg_vx_actual_ = 0.0;
     avg_vy_actual_ = 0.0;

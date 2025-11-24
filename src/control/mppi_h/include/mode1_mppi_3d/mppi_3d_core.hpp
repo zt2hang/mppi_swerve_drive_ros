@@ -99,7 +99,7 @@ class MPPI3DCore
 
         // Adaptive Estimator
         mppi_h_adaptive::AdaptiveEstimator* adaptive_estimator_;
-        bool use_estimator_ = true;
+        bool use_estimator_ = false;
         common_type::VxVyOmega last_control_cmd_estimator_;
         
         // Filtered actual velocity for stable training

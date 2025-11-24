@@ -51,6 +51,7 @@ MPPI::MPPI()
     private_nh_.param<bool>("controller/mode1/use_sg_filter", param_mode1.controller.use_sg_filter, true);
     private_nh_.param<int>("controller/mode1/sg_filter_half_window_size", param_mode1.controller.sg_filter_half_window_size, 10);
     private_nh_.param<int>("controller/mode1/sg_filter_poly_order", param_mode1.controller.sg_filter_poly_order, 3);
+    private_nh_.param<bool>("controller/mode1/use_adaptive_estimator", param_mode1.controller.use_adaptive_estimator, true);
 
     //// controller [mode two]
     private_nh_.param<std::string>("controller/mode2/name", param_mode2.controller.name, "mppi_4d");
@@ -71,6 +72,7 @@ MPPI::MPPI()
     private_nh_.param<bool>("controller/mode2/use_sg_filter", param_mode2.controller.use_sg_filter, true);
     private_nh_.param<int>("controller/mode2/sg_filter_half_window_size", param_mode2.controller.sg_filter_half_window_size, 10);
     private_nh_.param<int>("controller/mode2/sg_filter_poly_order", param_mode2.controller.sg_filter_poly_order, 3);
+    private_nh_.param<bool>("controller/mode2/use_adaptive_estimator", param_mode2.controller.use_adaptive_estimator, true);
 
     //// subscribing topic names
     std::string odom_topic, ref_path_topic, collision_costmap_topic, distance_error_map_topic, ref_yaw_map_topic;
