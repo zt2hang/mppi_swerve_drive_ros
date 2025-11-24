@@ -61,6 +61,7 @@ controller:
     use_sg_filter: true # set true to use Savitzky-Golay filter for smoothing the control input
     sg_filter_half_window_size: 4 # value in the range of 1 ~ (prediction_horizon - 1) is allowed.
     sg_filter_poly_order: 6
+    use_adaptive_estimator: true # set true to use Adaptive Estimator for online model correction
 
   mode2: # mode two: mppi_4d
     name: "[mode 2] mppi_4d"
@@ -81,3 +82,4 @@ controller:
     use_sg_filter: true # set true to use Savitzky-Golay filter for smoothing the control input
     sg_filter_half_window_size: 4 # value in the range of 1 ~ (prediction_horizon - 1) is allowed.
     sg_filter_poly_order: 6
+    use_adaptive_estimator: true # set true to use Adaptive Estimator for online model correction

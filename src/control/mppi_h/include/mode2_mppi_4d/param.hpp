@@ -48,6 +48,7 @@ struct MPPI4DParam
         bool use_sg_filter;
         int sg_filter_half_window_size;
         int sg_filter_poly_order;
+        bool use_adaptive_estimator;
     };
     Controller controller;
 };
