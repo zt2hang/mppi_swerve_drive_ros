@@ -11,6 +11,7 @@
 #include "common_param.hpp"
 #include "mode2_mppi_4d/param.hpp"
 #include "mode2_mppi_4d/mppi_4d_setting.hpp"
+#include "mppi_h/adaptive_estimator.hpp"
 
 namespace controller_mppi_4d
 {
@@ -52,6 +53,9 @@ class MPPI4DCore
         std::vector<common_type::VxVyOmega> getOptimalVxVyOmegaSequence();
         void setOptimalVxVyOmegaSequence(std::vector<common_type::VxVyOmega>& u_opt_seq);
 
+        // Estimator Update
+        void updateEstimator(const common_type::XYYaw& state, const common_type::VxVyOmega& control, const common_type::XYYaw& next_state, double dt);
+
     private:
         // mppi params and functions
         param::MPPI4DParam param_;
@@ -92,5 +96,15 @@ class MPPI4DCore
             const double delta
         );
         Control applySaviskyGolayFilter(ControlSeq& u_seq);
+
+        // Adaptive Estimator
+        mppi_h_adaptive::AdaptiveEstimator* adaptive_estimator_;
+        bool use_estimator_ = true;
+        common_type::VxVyOmega last_control_cmd_estimator_;
+        
+        // Filtered actual velocity for stable training
+        double avg_vx_actual_ = 0.0;
+        double avg_vy_actual_ = 0.0;
+        double avg_w_actual_ = 0.0;
 };
 } // namespace controller_mppi_4d

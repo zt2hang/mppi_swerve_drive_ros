@@ -4,4 +4,10 @@
     <node pkg="mppi_h" type="mppi_h_node" name="mppi_h" output="screen">
         <rosparam command="load" file="$(arg mppi_h_param_path)" />
     </node>
+    <!-- MLP -->
+    <!-- <node pkg="mppi_h" type="mppi_with_learner_node.py" name="mppi_python_node" output="screen">
+        <param name="horizon" value="30" />
+        <param name="num_samples" value="2000" /> 
+        <param name="dt" value="0.05" />
+    </node> -->
 </launch>

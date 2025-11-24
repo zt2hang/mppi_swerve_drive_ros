@@ -53,6 +53,7 @@ int MPPIHybridCore::selectMode(const common_type::XYYaw& current_state, const gr
         // when tracking error is large, select mode 2 (MPPI_4D)
         current_mode_idx_ = MODE_IDX_MPPI_4D;
     }
+    // current_mode_idx_ = MODE_IDX_MPPI_3D;
     return current_mode_idx_;
 }
 
@@ -261,6 +262,16 @@ StateSeqSamples MPPIHybridCore::getEliteSampledTrajectories(int elite_sample_siz
         std::cerr << "[MPPIHybridCore] invalid mode selected: " << current_mode_idx_ << std::endl;
         return StateSeqSamples();
     }
+}
+
+// update Estimator
+void MPPIHybridCore::updateEstimator(const common_type::XYYaw& state, const common_type::VxVyOmega& control, const common_type::XYYaw& next_state, double dt)
+{
+    // Update Estimator in both cores to keep them synchronized (they share the same network logic/weights ideally, 
+    // but here they are separate instances. To be perfect, they should share the pointer to the same network).
+    // For now, let's update both so they both learn.
+    std::get<controller_mppi_3d::MPPI3DCore*>(mppi_core_tuple_)->updateEstimator(state, control, next_state, dt);
+    std::get<controller_mppi_4d::MPPI4DCore*>(mppi_core_tuple_)->updateEstimator(state, control, next_state, dt);
 }
 
 } // namespace controller_mppi_h

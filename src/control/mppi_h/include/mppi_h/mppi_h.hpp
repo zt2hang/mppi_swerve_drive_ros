@@ -90,5 +90,11 @@ namespace controller_mppi_h
 
             // mppi core instance
             MPPIHybridCore* mppi_hybrid_core_;
+
+            // Previous state and control for MLP training
+            common_type::XYYaw previous_state_;
+            common_type::VxVyOmega previous_control_;
+            ros::Time previous_time_;
+            bool has_previous_data_ = false;
     };
 } // namespace controller_mppi_h

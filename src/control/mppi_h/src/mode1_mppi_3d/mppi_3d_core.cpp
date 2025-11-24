@@ -63,12 +63,21 @@ MPPI3DCore::MPPI3DCore(param::CommonParam& param_common, param::MPPI3DParam& par
             param_.controller.step_len_sec
         );
     }
+
+    // initialize adaptive estimator
+    adaptive_estimator_ = new mppi_h_adaptive::AdaptiveEstimator();
+    last_control_cmd_estimator_.setZero();
+    avg_vx_actual_ = 0.0;
+    avg_vy_actual_ = 0.0;
+    avg_w_actual_ = 0.0;
 }
 
 // destructor
 MPPI3DCore::~MPPI3DCore()
 {
-    // No Contents
+    if (adaptive_estimator_) {
+        delete adaptive_estimator_;
+    }
 }
 
 // mppi solver
@@ -130,8 +139,31 @@ common_type::VxVyOmega MPPI3DCore::solveMPPI(
             }
 
             // update state
+            Control u_curr = u_samples_[k][t-1];
+            Control u_corrected = u_curr;
+            
+            if (use_estimator_) {
+                // Convert to 8D wheel command for Estimator input
+                auto wheel_cmd = target_system_mppi_3d::convertControlSpace3DToControlSpace8D(u_curr, param_);
+                std::vector<double> wheel_params = {
+                    wheel_cmd.rotor_fl, wheel_cmd.rotor_fr, wheel_cmd.rotor_rl, wheel_cmd.rotor_rr,
+                    wheel_cmd.steer_fl, wheel_cmd.steer_fr, wheel_cmd.steer_rl, wheel_cmd.steer_rr
+                };
+                
+                Eigen::VectorXd input = mppi_h_adaptive::AdaptiveEstimator::prepareInput(u_curr.vx, u_curr.vy, u_curr.omega, wheel_params);
+                Eigen::VectorXd residual = adaptive_estimator_->forward(input);
+                
+                // Apply residual with clamping to prevent instability
+                double max_residual_v = 0.2; // Max 0.2 m/s correction
+                double max_residual_w = 0.1; // Max 0.1 rad/s correction
+                
+                u_corrected.vx += std::max(-max_residual_v, std::min(max_residual_v, residual(0)));
+                u_corrected.vy += std::max(-max_residual_v, std::min(max_residual_v, residual(1)));
+                u_corrected.omega += std::max(-max_residual_w, std::min(max_residual_w, residual(2)));
+            }
+
             x = target_system_mppi_3d::calcNextState(
-                x, u_samples_[k][t-1], param_.controller.step_len_sec
+                x, u_corrected, param_.controller.step_len_sec
             );
             x_samples_[k][t-1] = x; // save x_samples
 
@@ -473,6 +505,70 @@ void MPPI3DCore::setOptimalVxVyOmegaSequence(std::vector<common_type::VxVyOmega>
 
     // update u_opt_latest_
     u_opt_latest_ = u_opt_seq_latest_[0];
+}
+
+// Estimator Update
+void MPPI3DCore::updateEstimator(const common_type::XYYaw& state, const common_type::VxVyOmega& control, const common_type::XYYaw& next_state, double dt)
+{
+    if (!use_estimator_) return;
+
+    // Check for steady state to avoid learning from transient dynamics (acceleration/lag)
+    double dv = std::abs(control.vx - last_control_cmd_estimator_.vx) + std::abs(control.vy - last_control_cmd_estimator_.vy);
+    double dw = std::abs(control.omega - last_control_cmd_estimator_.omega);
+    
+    last_control_cmd_estimator_ = control;
+
+    // Thresholds: 0.05 m/s change, 0.1 rad/s change
+    if (dv > 0.05 || dw > 0.1) {
+        // Skip training during acceleration/transients
+        return;
+    }
+
+    // Calculate target residual
+    // We estimate Actual Velocity from (next_state - state) / dt
+    // Note: This is a simple approximation.
+    
+    double vx_inst = (next_state.x - state.x) * std::cos(state.yaw) + (next_state.y - state.y) * std::sin(state.yaw);
+    vx_inst /= dt;
+    
+    double vy_inst = -(next_state.x - state.x) * std::sin(state.yaw) + (next_state.y - state.y) * std::cos(state.yaw);
+    vy_inst /= dt;
+    
+    double w_inst = std::remainder(next_state.yaw - state.yaw, 2*M_PI) / dt;
+    
+    // Low-pass filter to reduce noise (alpha = 0.2)
+    double alpha = 0.2;
+    avg_vx_actual_ = alpha * vx_inst + (1.0 - alpha) * avg_vx_actual_;
+    avg_vy_actual_ = alpha * vy_inst + (1.0 - alpha) * avg_vy_actual_;
+    avg_w_actual_ = alpha * w_inst + (1.0 - alpha) * avg_w_actual_;
+    
+    Eigen::VectorXd target_residual(3);
+    target_residual(0) = avg_vx_actual_ - control.vx;
+    target_residual(1) = avg_vy_actual_ - control.vy;
+    target_residual(2) = avg_w_actual_ - control.omega;
+    
+    // Deadband: If residual is small, assume it's noise and don't train
+    if (std::abs(target_residual(0)) < 0.05 && std::abs(target_residual(1)) < 0.05 && std::abs(target_residual(2)) < 0.05) {
+        return;
+    }
+    
+    // Prepare input
+    Control u_curr = target_system_mppi_3d::convertVxVyOmegaToControlSpace3D(control);
+    auto wheel_cmd = target_system_mppi_3d::convertControlSpace3DToControlSpace8D(u_curr, param_);
+    std::vector<double> wheel_params = {
+        wheel_cmd.rotor_fl, wheel_cmd.rotor_fr, wheel_cmd.rotor_rl, wheel_cmd.rotor_rr,
+        wheel_cmd.steer_fl, wheel_cmd.steer_fr, wheel_cmd.steer_rl, wheel_cmd.steer_rr
+    };
+    Eigen::VectorXd input = mppi_h_adaptive::AdaptiveEstimator::prepareInput(control.vx, control.vy, control.omega, wheel_params);
+    
+    // Train
+    double error = adaptive_estimator_->train(input, target_residual);
+    
+    // Log error occasionally
+    static int train_count = 0;
+    if (train_count++ % 10 == 0) {
+        std::cout << "[MPPI3D] Estimator Error: " << error << std::endl;
+    }
 }
 
 } // namespace controller_mppi_3d

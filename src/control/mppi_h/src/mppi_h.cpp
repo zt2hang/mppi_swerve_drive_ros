@@ -154,6 +154,21 @@ void MPPI::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
     observed_state_.y = latest_y;
     observed_state_.yaw = latest_yaw;
     observed_state_.unwrap();
+
+    // Estimator Online Training Step
+    ros::Time current_time = msg->header.stamp;
+    if (has_previous_data_)
+    {
+        double dt = (current_time - previous_time_).toSec();
+        if (dt > 0.001 && dt < 0.2) // Reasonable dt
+        {
+            mppi_hybrid_core_->updateEstimator(previous_state_, previous_control_, observed_state_, dt);
+        }
+    }
+    
+    previous_state_ = observed_state_;
+    previous_time_ = current_time;
+    // Note: previous_control_ is updated in calcControlCommand
 }
 
 // callback to update reference path
@@ -216,6 +231,10 @@ void MPPI::calcControlCommand(const ros::TimerEvent& event)
             ref_yaw_map_,
             goal_state_
     );
+
+    // Store control for next training step
+    previous_control_ = optimal_cmd;
+    has_previous_data_ = true;
 
     // publish optimal control command as Twist message
     geometry_msgs::Twist cmd_vel;

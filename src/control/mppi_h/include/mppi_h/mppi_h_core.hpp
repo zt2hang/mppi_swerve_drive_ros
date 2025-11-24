@@ -45,6 +45,9 @@ class MPPIHybridCore
         StateSeqSamples getFullSampledTrajectories();
         StateSeqSamples getEliteSampledTrajectories(int elite_sample_size);
 
+        // Estimator Update
+        void updateEstimator(const common_type::XYYaw& state, const common_type::VxVyOmega& control, const common_type::XYYaw& next_state, double dt);
+
     private:
         // for mode selector
         int current_mode_idx_ = 1; // initial mode is MPPI_3D
