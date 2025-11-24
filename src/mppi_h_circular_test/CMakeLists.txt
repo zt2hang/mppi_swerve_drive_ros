@@ -24,6 +24,7 @@ include_directories(
 
 catkin_install_python(PROGRAMS
   scripts/circular_path_tracking_mppi_h.py
+  scripts/publish_circular_path.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
