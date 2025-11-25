@@ -49,6 +49,11 @@ MPPI::MPPI()
     private_nh_.param<double>("controller/mode1/weight_distance_error_penalty", param_mode1.controller.weight_distance_error_penalty, 40.0);
     private_nh_.param<double>("controller/mode1/weight_terminal_state_penalty", param_mode1.controller.weight_terminal_state_penalty, 50.0);
     private_nh_.param<double>("controller/mode1/weight_slip_penalty", param_mode1.controller.weight_slip_penalty, 10.0); // Default weight for slip
+    // Curvature-aware adaptive speed regulation parameters
+    private_nh_.param<double>("controller/mode1/curvature_lookahead_dist", param_mode1.controller.curvature_lookahead_dist, 0.5); // [m]
+    private_nh_.param<double>("controller/mode1/base_friction_coeff", param_mode1.controller.base_friction_coeff, 0.3); // friction coefficient
+    private_nh_.param<double>("controller/mode1/weight_curvature_speed", param_mode1.controller.weight_curvature_speed, 50.0); // weight for curvature speed limit
+    private_nh_.param<double>("controller/mode1/weight_yaw_rate_error", param_mode1.controller.weight_yaw_rate_error, 20.0); // weight for yaw rate tracking
     private_nh_.param<bool>("controller/mode1/use_sg_filter", param_mode1.controller.use_sg_filter, true);
     private_nh_.param<int>("controller/mode1/sg_filter_half_window_size", param_mode1.controller.sg_filter_half_window_size, 10);
     private_nh_.param<int>("controller/mode1/sg_filter_poly_order", param_mode1.controller.sg_filter_poly_order, 3);
@@ -71,6 +76,11 @@ MPPI::MPPI()
     private_nh_.param<double>("controller/mode2/weight_distance_error_penalty", param_mode2.controller.weight_distance_error_penalty, 40.0);
     private_nh_.param<double>("controller/mode2/weight_terminal_state_penalty", param_mode2.controller.weight_terminal_state_penalty, 50.0);
     private_nh_.param<double>("controller/mode2/weight_slip_penalty", param_mode2.controller.weight_slip_penalty, 10.0); // Default weight for slip
+    // Curvature-aware adaptive speed regulation parameters
+    private_nh_.param<double>("controller/mode2/curvature_lookahead_dist", param_mode2.controller.curvature_lookahead_dist, 0.5); // [m]
+    private_nh_.param<double>("controller/mode2/base_friction_coeff", param_mode2.controller.base_friction_coeff, 0.3); // friction coefficient
+    private_nh_.param<double>("controller/mode2/weight_curvature_speed", param_mode2.controller.weight_curvature_speed, 50.0); // weight for curvature speed limit
+    private_nh_.param<double>("controller/mode2/weight_yaw_rate_error", param_mode2.controller.weight_yaw_rate_error, 20.0); // weight for yaw rate tracking
     private_nh_.param<bool>("controller/mode2/use_sg_filter", param_mode2.controller.use_sg_filter, true);
     private_nh_.param<int>("controller/mode2/sg_filter_half_window_size", param_mode2.controller.sg_filter_half_window_size, 10);
     private_nh_.param<int>("controller/mode2/sg_filter_poly_order", param_mode2.controller.sg_filter_poly_order, 3);

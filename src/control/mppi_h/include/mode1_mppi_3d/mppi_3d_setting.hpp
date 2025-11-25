@@ -106,44 +106,94 @@ namespace controller_mppi_3d
         // initialize stage cost
         double cost = 0.0;
 
-        // Penalize Slip Risk (Lateral Acceleration Demand)
-        // We penalize the *potential* for slip, which is proportional to slip_factor * (vx * omega)
-        // Or simply penalize lateral acceleration if slip_factor is high.
-        // Cost = weight * (slip_factor * vx * omega)^2
+        // ========================================================================
+        // [1] Slip Risk Penalty: Penalize control inputs that may cause lateral slip
+        // Physical model: v_slip = slip_factor * v_x * omega (centrifugal-induced slip)
+        // ========================================================================
         double slip_velocity = slip_factor * control_input.vx * control_input.omega;
         cost += param.controller.weight_slip_penalty * (slip_velocity * slip_velocity);
 
-        // only when the vehicle is not close to the goal
-        // for circular or square path tracking
-        // if( std::sqrt( pow(goal_state.x - state.x, 2) + pow(goal_state.y - state.y, 2) ) > param.navigation.xy_goal_tolerance )
-        // {
-
-        // if( std::sqrt( pow(goal_state.x - state.x, 2) + pow(goal_state.y - state.y, 2) ) > param.navigation.xy_goal_tolerance )
-        // {
-            // track target velocity (considering only aligned component to the reference path)
-            if (ref_yaw_map.isInside(grid_map::Position(state.x, state.y)))
+        // ========================================================================
+        // [2] Curvature-Aware Adaptive Speed Regulation (for Omnidirectional Robots)
+        // For swerve drive, we don't need to create turning radius like car-like robots.
+        // Instead, we focus on limiting lateral acceleration to prevent slip.
+        // ========================================================================
+        if (ref_yaw_map.isInside(grid_map::Position(state.x, state.y)))
+        {
+            double ref_yaw_curr = ref_yaw_map.atPosition("ref_yaw", grid_map::Position(state.x, state.y), grid_map::InterpolationMethods::INTER_NEAREST);
+            
+            // Lookahead to estimate upcoming curvature
+            double lookahead = param.controller.curvature_lookahead_dist;
+            double next_x = state.x + lookahead * std::cos(ref_yaw_curr);
+            double next_y = state.y + lookahead * std::sin(ref_yaw_curr);
+            
+            if (ref_yaw_map.isInside(grid_map::Position(next_x, next_y)))
             {
-                double ref_yaw = ref_yaw_map.atPosition("ref_yaw", grid_map::Position(state.x, state.y), grid_map::InterpolationMethods::INTER_NEAREST);
-                double diff_yaw = std::remainder(state.yaw - ref_yaw, 2 * M_PI); // diff_yaw is in [-pi, pi]
-                Eigen::Matrix<double, 2, 1> ref_vel_direction;
-                // for circular or square path tracking
-                ref_vel_direction << std::cos(diff_yaw), -std::sin(diff_yaw);
-                // ref_vel_direction << std::cos(diff_yaw), std::sin(diff_yaw);
-                Eigen::Matrix<double, 2, 1> current_vel;
-                current_vel << control_input.vx, control_input.vy;
-                double ref_aligned_vel = ref_vel_direction.dot(current_vel);
-                cost += param.controller.weight_velocity_error * pow(ref_aligned_vel - param.controller.ref_velocity, 2);
+                double ref_yaw_ahead = ref_yaw_map.atPosition("ref_yaw", grid_map::Position(next_x, next_y), grid_map::InterpolationMethods::INTER_NEAREST);
+                double delta_yaw = std::abs(std::remainder(ref_yaw_ahead - ref_yaw_curr, 2 * M_PI));
+                double curvature = delta_yaw / lookahead; // Approximate path curvature [1/m]
+                
+                // Adaptive friction coefficient: higher slip_factor means lower effective friction
+                double friction_degradation = 1.0 - 2.0 * slip_factor; // slip_factor in [0, 0.3]
+                friction_degradation = std::max(0.3, friction_degradation);
+                double mu_eff = param.controller.base_friction_coeff * friction_degradation;
+                
+                // For omnidirectional robot: use higher curvature floor since it can turn sharply
+                const double g = 9.81;
+                const double curvature_floor = 0.5; // Higher floor for omni robots
+                double effective_curvature = std::max(curvature, curvature_floor);
+                
+                // Soft saturation for smooth transition
+                double blend_factor = 1.0 / (1.0 + std::exp(-10.0 * (curvature - 0.3)));
+                effective_curvature = curvature_floor + blend_factor * (curvature - curvature_floor);
+                effective_curvature = std::max(effective_curvature, curvature_floor);
+                
+                double v_safe = std::sqrt(mu_eff * g / effective_curvature);
+                v_safe = std::min(v_safe, param.controller.ref_velocity);
+                
+                // Only penalize if significantly exceeding safe speed
+                double current_speed = std::sqrt(control_input.vx * control_input.vx + control_input.vy * control_input.vy);
+                double speed_margin = 0.3; // 30% margin for omni robots
+                if (current_speed > v_safe * (1.0 + speed_margin))
+                {
+                    double speed_excess = current_speed - v_safe * (1.0 + speed_margin);
+                    cost += param.controller.weight_curvature_speed * speed_excess * speed_excess;
+                }
+                
+                // ================================================================
+                // [3] Yaw Rate Tracking for Omnidirectional Robots
+                // Encourage rotating towards upcoming path direction
+                // ================================================================
+                double yaw_error_to_path = std::remainder(state.yaw - ref_yaw_ahead, 2 * M_PI);
+                double omega_desired = -2.0 * yaw_error_to_path;
+                omega_desired = std::max(-2.0, std::min(2.0, omega_desired));
+                
+                double omega_error = control_input.omega - omega_desired;
+                cost += param.controller.weight_yaw_rate_error * omega_error * omega_error;
             }
+        }
 
-            // try to align with the reference path
-            if (ref_yaw_map.isInside(grid_map::Position(state.x, state.y)))
-            {
-                double ref_yaw = ref_yaw_map.atPosition("ref_yaw", grid_map::Position(state.x, state.y), grid_map::InterpolationMethods::INTER_NEAREST);
-                double diff_yaw = std::remainder(state.yaw - ref_yaw, 2 * M_PI); // diff_yaw is in [-pi, pi]
-                cost += param.controller.weight_angular_error * diff_yaw * diff_yaw;
-            }
-        // }
-        // }
+        // Track target velocity (considering only aligned component to the reference path)
+        if (ref_yaw_map.isInside(grid_map::Position(state.x, state.y)))
+        {
+            double ref_yaw = ref_yaw_map.atPosition("ref_yaw", grid_map::Position(state.x, state.y), grid_map::InterpolationMethods::INTER_NEAREST);
+            double diff_yaw = std::remainder(state.yaw - ref_yaw, 2 * M_PI); // diff_yaw is in [-pi, pi]
+            Eigen::Matrix<double, 2, 1> ref_vel_direction;
+            // for circular or square path tracking
+            ref_vel_direction << std::cos(diff_yaw), -std::sin(diff_yaw);
+            Eigen::Matrix<double, 2, 1> current_vel;
+            current_vel << control_input.vx, control_input.vy;
+            double ref_aligned_vel = ref_vel_direction.dot(current_vel);
+            cost += param.controller.weight_velocity_error * pow(ref_aligned_vel - param.controller.ref_velocity, 2);
+        }
+
+        // Try to align with the reference path (heading error)
+        if (ref_yaw_map.isInside(grid_map::Position(state.x, state.y)))
+        {
+            double ref_yaw = ref_yaw_map.atPosition("ref_yaw", grid_map::Position(state.x, state.y), grid_map::InterpolationMethods::INTER_NEAREST);
+            double diff_yaw = std::remainder(state.yaw - ref_yaw, 2 * M_PI); // diff_yaw is in [-pi, pi]
+            cost += param.controller.weight_angular_error * diff_yaw * diff_yaw;
+        }
 
         // avoid collision
         if (collision_costmap.isInside(grid_map::Position(state.x, state.y)))

@@ -39,7 +39,7 @@ mode_selector:
 controller:
   common: # common parameters
     control_interval: 0.05 # [s]
-    prediction_horizon: 30 # [steps]
+    prediction_horizon: 40 # [steps]
     step_len_sec: 0.033 # [s]
 
   mode1: # mode one: mppi_3d
@@ -58,6 +58,12 @@ controller:
     weight_collision_penalty: 50.0
     weight_distance_error_penalty: 60.0
     weight_terminal_state_penalty: 10.0
+    weight_slip_penalty: 15.0 # weight for slip risk penalty
+    # Curvature-aware adaptive speed regulation
+    curvature_lookahead_dist: 0.5 # [m] lookahead distance for curvature estimation
+    base_friction_coeff: 0.3 # nominal friction coefficient
+    weight_curvature_speed: 60.0 # weight for penalizing speed exceeding safe curvature limit
+    weight_yaw_rate_error: 25.0 # weight for yaw rate tracking error
     use_sg_filter: true # set true to use Savitzky-Golay filter for smoothing the control input
     sg_filter_half_window_size: 4 # value in the range of 1 ~ (prediction_horizon - 1) is allowed.
     sg_filter_poly_order: 6
@@ -79,6 +85,12 @@ controller:
     weight_collision_penalty: 50.0
     weight_distance_error_penalty: 40.0
     weight_terminal_state_penalty: 10.0
+    weight_slip_penalty: 15.0 # weight for slip risk penalty
+    # Curvature-aware adaptive speed regulation
+    curvature_lookahead_dist: 0.5 # [m] lookahead distance for curvature estimation
+    base_friction_coeff: 0.3 # nominal friction coefficient
+    weight_curvature_speed: 60.0 # weight for penalizing speed exceeding safe curvature limit
+    weight_yaw_rate_error: 25.0 # weight for yaw rate tracking error
     use_sg_filter: true # set true to use Savitzky-Golay filter for smoothing the control input
     sg_filter_half_window_size: 4 # value in the range of 1 ~ (prediction_horizon - 1) is allowed.
     sg_filter_poly_order: 6

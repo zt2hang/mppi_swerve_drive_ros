@@ -46,6 +46,11 @@ struct MPPI4DParam
         double weight_distance_error_penalty;
         double weight_terminal_state_penalty;
         double weight_slip_penalty; // New parameter for slip cost
+        // Curvature-aware adaptive speed regulation parameters
+        double curvature_lookahead_dist;     // Lookahead distance for curvature estimation [m]
+        double base_friction_coeff;          // Nominal friction coefficient (e.g., 0.8 for dry, 0.3 for wet)
+        double weight_curvature_speed;       // Weight for penalizing speed exceeding safe curvature limit
+        double weight_yaw_rate_error;        // Weight for yaw rate tracking error
         bool use_sg_filter;
         int sg_filter_half_window_size;
         int sg_filter_poly_order;
