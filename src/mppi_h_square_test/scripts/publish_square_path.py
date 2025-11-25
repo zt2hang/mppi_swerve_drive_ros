@@ -40,21 +40,26 @@ class SquarePathPublisher:
         best_s = self.current_s
         min_dist = float('inf')
         
-        # Search window: +/- 2.0m
-        search_range = np.linspace(self.current_s - 2.0, self.current_s + 2.0, 41)
-        
-        # Shift y for calculation
-        y_shifted = y - self.L / 2.0
+        # Search window: scale with perimeter, at least +/- 5.0m for larger paths
+        search_window = max(5.0, self.perimeter * 0.1)
+        search_range = np.linspace(self.current_s - search_window, self.current_s + search_window, 101)
         
         for s_test in search_range:
-            # get_xy_theta_centered returns centered coordinates
-            px, py, _ = self.get_xy_theta_centered(s_test)
-            dist = np.hypot(x - px, y_shifted - py)
+            # get_xy_theta returns the actual path coordinates (with y offset)
+            px, py, _ = self.get_xy_theta(s_test)
+            dist = np.hypot(x - px, y - py)
             if dist < min_dist:
                 min_dist = dist
                 best_s = s_test
-                
-        self.current_s = best_s
+        
+        # Only update if we found a reasonably close point, and ensure forward progress
+        if min_dist < 3.0:
+            # Prefer forward movement: only go backward if significantly closer
+            if best_s >= self.current_s or min_dist < 0.5:
+                self.current_s = best_s
+            else:
+                # Allow small backward adjustment
+                self.current_s = max(best_s, self.current_s - 0.5)
 
     def timer_callback(self, event):
         self.publish_local_path()

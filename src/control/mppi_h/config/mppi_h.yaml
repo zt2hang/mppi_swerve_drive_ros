@@ -56,7 +56,7 @@ controller:
     weight_velocity_error: 10.0
     weight_angular_error: 30.0
     weight_collision_penalty: 50.0
-    weight_distance_error_penalty: 40.0
+    weight_distance_error_penalty: 60.0
     weight_terminal_state_penalty: 10.0
     use_sg_filter: true # set true to use Savitzky-Golay filter for smoothing the control input
     sg_filter_half_window_size: 4 # value in the range of 1 ~ (prediction_horizon - 1) is allowed.
