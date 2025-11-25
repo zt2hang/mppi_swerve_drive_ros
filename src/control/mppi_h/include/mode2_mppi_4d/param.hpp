@@ -45,6 +45,7 @@ struct MPPI4DParam
         double weight_collision_penalty;
         double weight_distance_error_penalty;
         double weight_terminal_state_penalty;
+        double weight_slip_penalty; // New parameter for slip cost
         bool use_sg_filter;
         int sg_filter_half_window_size;
         int sg_filter_poly_order;

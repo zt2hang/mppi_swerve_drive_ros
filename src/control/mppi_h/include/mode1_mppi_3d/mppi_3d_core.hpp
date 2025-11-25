@@ -11,7 +11,7 @@
 #include "common_param.hpp"
 #include "mode1_mppi_3d/param.hpp"
 #include "mode1_mppi_3d/mppi_3d_setting.hpp"
-#include "mppi_h/adaptive_estimator.hpp"
+#include "mppi_h/tire_stiffness_estimator.hpp"
 
 namespace controller_mppi_3d
 {
@@ -98,13 +98,19 @@ class MPPI3DCore
         Control applySaviskyGolayFilter(ControlSeq& u_seq);
 
         // Adaptive Estimator
-        mppi_h_adaptive::AdaptiveEstimator* adaptive_estimator_;
-        bool use_estimator_ = false;
+        mppi_h::TireStiffnessEstimator* adaptive_estimator_;
+        bool use_estimator_ = true;
         common_type::VxVyOmega last_control_cmd_estimator_;
         
         // Filtered actual velocity for stable training
         double avg_vx_actual_ = 0.0;
         double avg_vy_actual_ = 0.0;
         double avg_w_actual_ = 0.0;
+
+        // Covariance Adaptation
+        void updateCovariance();
+        double cov_adaptation_rate_ = 0.1;
+        double min_sigma_ = 0.1;
+        double max_sigma_ = 1.0;
 };
 } // namespace controller_mppi_3d

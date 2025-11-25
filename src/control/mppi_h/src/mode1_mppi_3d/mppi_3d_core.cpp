@@ -65,7 +65,7 @@ MPPI3DCore::MPPI3DCore(param::CommonParam& param_common, param::MPPI3DParam& par
     }
 
     // initialize adaptive estimator
-    adaptive_estimator_ = new mppi_h_adaptive::AdaptiveEstimator();
+    adaptive_estimator_ = new mppi_h::TireStiffnessEstimator();
     use_estimator_ = param_.controller.use_adaptive_estimator;
     last_control_cmd_estimator_.setZero();
     avg_vx_actual_ = 0.0;
@@ -141,30 +141,12 @@ common_type::VxVyOmega MPPI3DCore::solveMPPI(
 
             // update state
             Control u_curr = u_samples_[k][t-1];
-            Control u_corrected = u_curr;
             
-            if (use_estimator_) {
-                // Convert to 8D wheel command for Estimator input
-                auto wheel_cmd = target_system_mppi_3d::convertControlSpace3DToControlSpace8D(u_curr, param_);
-                std::vector<double> wheel_params = {
-                    wheel_cmd.rotor_fl, wheel_cmd.rotor_fr, wheel_cmd.rotor_rl, wheel_cmd.rotor_rr,
-                    wheel_cmd.steer_fl, wheel_cmd.steer_fr, wheel_cmd.steer_rl, wheel_cmd.steer_rr
-                };
-                
-                Eigen::VectorXd input = mppi_h_adaptive::AdaptiveEstimator::prepareInput(u_curr.vx, u_curr.vy, u_curr.omega, wheel_params);
-                Eigen::VectorXd residual = adaptive_estimator_->forward(input);
-                
-                // Apply residual with clamping to prevent instability
-                double max_residual_v = 0.2; // Max 0.2 m/s correction
-                double max_residual_w = 0.1; // Max 0.1 rad/s correction
-                
-                u_corrected.vx += std::max(-max_residual_v, std::min(max_residual_v, residual(0)));
-                u_corrected.vy += std::max(-max_residual_v, std::min(max_residual_v, residual(1)));
-                u_corrected.omega += std::max(-max_residual_w, std::min(max_residual_w, residual(2)));
-            }
+            // Get current slip factor
+            double slip_factor = use_estimator_ ? adaptive_estimator_->getSlipFactor() : 0.0;
 
             x = target_system_mppi_3d::calcNextState(
-                x, u_corrected, param_.controller.step_len_sec
+                x, u_curr, param_.controller.step_len_sec, slip_factor
             );
             x_samples_[k][t-1] = x; // save x_samples
 
@@ -178,7 +160,8 @@ common_type::VxVyOmega MPPI3DCore::solveMPPI(
                     distance_error_map,
                     ref_yaw_map,
                     goal_state,
-                    param_
+                    param_,
+                    slip_factor
             );
             costs_[k] += param_.controller.param_lambda * (1.0 - param_.controller.param_alpha) \
              * u_opt_seq_latest_[t-1].eigen().transpose() * (sigma_[t-1].eigen().asDiagonal().inverse()) * u_samples_[k][t-1].eigen();
@@ -189,6 +172,9 @@ common_type::VxVyOmega MPPI3DCore::solveMPPI(
 
     // calculate weight for each sample
     weights_ = calcWeightsOfSamples(costs_);
+
+    // Update Covariance (Adaptive MPPI)
+    // updateCovariance(); // Disabled: Causing instability in turns
 
     // calculate optimal control command
     ControlSeq u_opt_seq = u_opt_seq_latest_;
@@ -221,8 +207,9 @@ common_type::VxVyOmega MPPI3DCore::solveMPPI(
     x_opt_seq_[0] = target_system_mppi_3d::convertXYYawToStateSpace3D(observed_state);
     for (int t = 1; t < T; t++)
     {
+        double slip_factor = use_estimator_ ? adaptive_estimator_->getSlipFactor() : 0.0;
         x_opt_seq_[t] = target_system_mppi_3d::calcNextState(
-            x_opt_seq_[t-1], u_opt_seq[t-1], param_.controller.step_len_sec
+            x_opt_seq_[t-1], u_opt_seq[t-1], param_.controller.step_len_sec, slip_factor
         );
 
         // add stage cost
@@ -525,10 +512,7 @@ void MPPI3DCore::updateEstimator(const common_type::XYYaw& state, const common_t
         return;
     }
 
-    // Calculate target residual
-    // We estimate Actual Velocity from (next_state - state) / dt
-    // Note: This is a simple approximation.
-    
+    // Calculate actual velocity from state change
     double vx_inst = (next_state.x - state.x) * std::cos(state.yaw) + (next_state.y - state.y) * std::sin(state.yaw);
     vx_inst /= dt;
     
@@ -543,32 +527,55 @@ void MPPI3DCore::updateEstimator(const common_type::XYYaw& state, const common_t
     avg_vy_actual_ = alpha * vy_inst + (1.0 - alpha) * avg_vy_actual_;
     avg_w_actual_ = alpha * w_inst + (1.0 - alpha) * avg_w_actual_;
     
-    Eigen::VectorXd target_residual(3);
-    target_residual(0) = avg_vx_actual_ - control.vx;
-    target_residual(1) = avg_vy_actual_ - control.vy;
-    target_residual(2) = avg_w_actual_ - control.omega;
+    // Update Estimator
+    adaptive_estimator_->update(control.vx, control.vy, control.omega, 
+                                avg_vx_actual_, avg_vy_actual_, avg_w_actual_, dt);
+}
+
+// Covariance Adaptation
+void MPPI3DCore::updateCovariance()
+{
+    // Calculate weighted covariance of the noise
+    // sigma_new^2 = sum(w_k * noise_k^2)
     
-    // Deadband: If residual is small, assume it's noise and don't train
-    if (std::abs(target_residual(0)) < 0.05 && std::abs(target_residual(1)) < 0.05 && std::abs(target_residual(2)) < 0.05) {
-        return;
-    }
-    
-    // Prepare input
-    Control u_curr = target_system_mppi_3d::convertVxVyOmegaToControlSpace3D(control);
-    auto wheel_cmd = target_system_mppi_3d::convertControlSpace3DToControlSpace8D(u_curr, param_);
-    std::vector<double> wheel_params = {
-        wheel_cmd.rotor_fl, wheel_cmd.rotor_fr, wheel_cmd.rotor_rl, wheel_cmd.rotor_rr,
-        wheel_cmd.steer_fl, wheel_cmd.steer_fr, wheel_cmd.steer_rl, wheel_cmd.steer_rr
-    };
-    Eigen::VectorXd input = mppi_h_adaptive::AdaptiveEstimator::prepareInput(control.vx, control.vy, control.omega, wheel_params);
-    
-    // Train
-    double error = adaptive_estimator_->train(input, target_residual);
-    
-    // Log error occasionally
-    static int train_count = 0;
-    if (train_count++ % 10 == 0) {
-        std::cout << "[MPPI3D] Estimator Error: " << error << std::endl;
+    // We update sigma_ for each time step t and each dimension u
+    for (int t = 0; t < T; t++)
+    {
+        double var_vx = 0.0;
+        double var_vy = 0.0;
+        double var_w = 0.0;
+        
+        for (int k = 0; k < K; k++)
+        {
+            double w = weights_[k];
+            // noises_[k][t] is the noise vector (epsilon)
+            var_vx += w * std::pow(noises_[k][t].vx, 2);
+            var_vy += w * std::pow(noises_[k][t].vy, 2);
+            var_w  += w * std::pow(noises_[k][t].omega, 2);
+        }
+        
+        // Update sigma with smoothing
+        // sigma_ is standard deviation, so we take sqrt of var
+        double sigma_vx_new = std::sqrt(var_vx);
+        double sigma_vy_new = std::sqrt(var_vy);
+        double sigma_w_new  = std::sqrt(var_w);
+        
+        // Apply learning rate
+        sigma_[t].vx = (1.0 - cov_adaptation_rate_) * sigma_[t].vx + cov_adaptation_rate_ * sigma_vx_new;
+        sigma_[t].vy = (1.0 - cov_adaptation_rate_) * sigma_[t].vy + cov_adaptation_rate_ * sigma_vy_new;
+        sigma_[t].omega = (1.0 - cov_adaptation_rate_) * sigma_[t].omega + cov_adaptation_rate_ * sigma_w_new;
+        
+        // Clamp to min/max
+        // We should respect the original relative scale of sigma if possible, but simple clamping is fine for now.
+        // Or we can clamp based on the initial params.
+        
+        // Let's use hard limits for safety
+        double min_s = 0.05;
+        double max_s = 2.0;
+        
+        sigma_[t].vx = std::max(min_s, std::min(max_s, sigma_[t].vx));
+        sigma_[t].vy = std::max(min_s, std::min(max_s, sigma_[t].vy));
+        sigma_[t].omega = std::max(min_s, std::min(max_s, sigma_[t].omega));
     }
 }
 

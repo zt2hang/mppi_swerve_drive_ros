@@ -65,7 +65,7 @@ MPPI4DCore::MPPI4DCore(param::CommonParam& param_common, param::MPPI4DParam& par
     }
 
     // initialize adaptive estimator
-    adaptive_estimator_ = new mppi_h_adaptive::AdaptiveEstimator();
+    adaptive_estimator_ = new mppi_h::TireStiffnessEstimator();
     use_estimator_ = param_.controller.use_adaptive_estimator;
     last_control_cmd_estimator_.setZero();
     avg_vx_actual_ = 0.0;
@@ -141,171 +141,13 @@ common_type::VxVyOmega MPPI4DCore::solveMPPI(
 
             // update state
             Control u_curr = u_samples_[k][t-1];
-            Control u_corrected = u_curr;
             
-            if (use_estimator_) {
-                // In 4D mode, u_curr is already 8D (4 wheel vels + 4 steer angles)
-                // But we need to estimate the body velocity (vx, vy, w) to input to the network
-                // This is tricky because 4D control is wheel-level.
-                // We can approximate body velocity from wheel commands using forward kinematics, 
-                // OR we can just use the previous estimated body state.
-                // However, the network expects (vx, vy, w, wheel_params).
-                
-                // Let's estimate body velocity from wheel commands (Forward Kinematics)
-                // Simple average of wheel velocities projected to body frame?
-                // Or just use 0,0,0 if we don't have a good estimate?
-                // Better: The network is trained on (vx, vy, w) + wheel_params.
-                // In 4D mode, we are optimizing wheel params directly.
-                // We can try to infer vx, vy, w from the wheel commands.
-                
-                // For now, let's use a simplified approach:
-                // We don't have explicit vx, vy, w in the control input u_curr.
-                // But we can calculate them if we assume no slip.
-                // Let's use a helper to estimate body velocity from wheel commands.
-                
-                // Actually, for the residual network input, we need "intended body velocity".
-                // In 4D mode, the "intended body velocity" is implicit.
-                // Let's use the current state's velocity as a proxy, or 0.
-                // Or, we can skip MLP correction in 4D mode if the input format doesn't match.
-                
-                // WAIT: The user said "Input is current 3D robot control (vx, vy, w) AND 8D wheel control".
-                // In 4D mode, we only have 8D wheel control.
-                // We can calculate the equivalent 3D body velocity from the 8D wheel control.
-                
-                double vx_est = 0.0;
-                double vy_est = 0.0;
-                double w_est = 0.0;
-                
-                // Simple Forward Kinematics (Average)
-                for(int i=0; i<4; ++i) {
-                    double v = (i%2==0) ? u_curr.fl_vel : u_curr.rr_vel; // Simplified access
-                    double steer = (i%2==0) ? u_curr.fl_steer : u_curr.rr_steer;
-                    // This is just an approximation since u_curr has 4 distinct values but struct has 2 pairs?
-                    // Wait, ControlSpace4D has fl_steer, rr_steer, fl_vel, rr_vel.
-                    // It seems it assumes symmetry or 2-channel control?
-                    // Let's check ControlSpace4D definition.
-                    // It has 4 members: fl_steer, rr_steer, fl_vel, rr_vel.
-                    // It seems it controls front-left and rear-right? Or maybe it's a simplified 4D model?
-                    // If it's 4D, it usually means 4 independent steering/drive?
-                    // Ah, the struct has 4 doubles.
-                }
-                
-                // Let's look at how 4D calculates next state.
-                // target_system_mppi_4d::calcNextState
-                // It likely does FK.
-                
-                // For now, to be safe and consistent with 3D mode, let's construct the input vector.
-                // We need to map the 4D control to the 8D wheel params expected by the network.
-                // The network expects: fl_vel, fr_vel, rl_vel, rr_vel, fl_steer, fr_steer, rl_steer, rr_steer.
-                // ControlSpace4D has: fl_steer, rr_steer, fl_vel, rr_vel.
-                // It seems this 4D mode might be controlling pairs of wheels or it's a specific 4-variable parameterization.
-                // Assuming symmetric control for the other wheels or just mapping available ones.
-                
-                // Let's assume:
-                // fl -> fl
-                // rr -> rr
-                // fr -> fl (symmetric?) or rr?
-                // rl -> rr (symmetric?) or fl?
-                
-                // Without exact mapping, let's just use what we have.
-                // And for vx, vy, w, we can use the values from the previous state update or just 0.
-                
-                // Actually, if we can't easily get vx, vy, w, maybe we shouldn't apply MLP in 4D mode 
-                // UNLESS we change the network to not require them, or we estimate them.
-                
-                // Let's try to estimate vx, vy, w from the state transition function logic.
-                // But we are inside the loop.
-                
-                // Alternative: The user asked to "solve the problem completely".
-                // If 4D mode is used, we should support it.
-                // Let's use the current state's velocity as the "commanded" velocity proxy? No, that's wrong.
-                
-                // Let's use a placeholder for now, or better, calculate it properly if possible.
-                // Given I cannot see `calcNextState` implementation for 4D right now (it's in a header I didn't read fully or is in `mppi_4d_setting.hpp`),
-                // I will assume we can skip MLP for 4D for now OR implement a best-effort mapping.
-                
-                // However, the user specifically asked to modify mppi_4d_core.
-                // So I must add the code.
-                
-                // Estimate body velocity from wheel commands for MLP input
-                // Simple Forward Kinematics
-                double L = param_.target_system.l_f;
-                double W = param_.target_system.d_l;
-                double R = param_.target_system.tire_radius;
-                
-                // Average vx, vy, w from 4 wheels (assuming no slip for estimation)
-                // v_x = v_wheel * cos(steer)
-                // v_y = v_wheel * sin(steer)
-                // This is a rough estimate but better than 0.0
-                
-                // FL
-                double v_fl = u_curr.fl_vel * R;
-                double vx_fl = v_fl * std::cos(u_curr.fl_steer);
-                double vy_fl = v_fl * std::sin(u_curr.fl_steer);
-                
-                // RR
-                double v_rr = u_curr.rr_vel * R;
-                double vx_rr = v_rr * std::cos(u_curr.rr_steer);
-                double vy_rr = v_rr * std::sin(u_curr.rr_steer);
-                
-                // Estimate body vx, vy (ignoring rotation for a moment or assuming small rotation)
-                // Actually, v_wheel_x = vx - w*y
-                // v_wheel_y = vy + w*x
-                
-                // Let's use a very simple approximation: average of wheel velocities projected to body frame
-                // This is not strictly correct but provides a non-zero "intent" to the network.
-                vx_est = (vx_fl + vx_rr) / 2.0;
-                vy_est = (vy_fl + vy_rr) / 2.0;
-                w_est = 0.0; // Hard to estimate w without more complex FK
-                
-                std::vector<double> wheel_params = {
-                    u_curr.fl_vel, u_curr.fl_vel, u_curr.rr_vel, u_curr.rr_vel,
-                    u_curr.fl_steer, u_curr.fl_steer, u_curr.rr_steer, u_curr.rr_steer
-                };
-                
-                Eigen::VectorXd input = mppi_h_adaptive::AdaptiveEstimator::prepareInput(vx_est, vy_est, w_est, wheel_params);
-                Eigen::VectorXd residual = adaptive_estimator_->forward(input);
-                
-                // Apply residual to the STATE update, not the control, because control is wheel-based.
-                // Wait, in 3D mode we applied it to u_corrected (vx, vy, w).
-                // Here u_corrected is wheel commands.
-                // We cannot apply (dvx, dvy, dw) to wheel commands directly.
-                
-                // So, for 4D mode, we should probably add the residual to the *resulting state* after kinematic update.
-                // x_next = f(x, u) + residual * dt
-                
-                // Let's do that.
-                // Calculate next state with kinematics
-                x = target_system_mppi_4d::calcNextState(
-                    x, u_curr, param_.controller.step_len_sec, param_
-                );
-                
-                // Add residual (integrated)
-                // residual is (dvx, dvy, dw)
-                // dx = (dvx * cos(yaw) - dvy * sin(yaw)) * dt
-                // dy = (dvx * sin(yaw) + dvy * cos(yaw)) * dt
-                // dyaw = dw * dt
-                
-                double dt = param_.controller.step_len_sec;
-                double yaw = x.yaw; // Current yaw (after kinematic update)
-                
-                // Clamp residual to prevent instability
-                double max_residual_v = 0.2;
-                double max_residual_w = 0.1;
-                
-                double res_vx = std::max(-max_residual_v, std::min(max_residual_v, residual(0)));
-                double res_vy = std::max(-max_residual_v, std::min(max_residual_v, residual(1)));
-                double res_w  = std::max(-max_residual_w, std::min(max_residual_w, residual(2)));
-                
-                x.x += (res_vx * std::cos(yaw) - res_vy * std::sin(yaw)) * dt;
-                x.y += (res_vx * std::sin(yaw) + res_vy * std::cos(yaw)) * dt;
-                x.yaw += res_w * dt;
-                x.unwrap();
-            } else {
-                 x = target_system_mppi_4d::calcNextState(
-                    x, u_samples_[k][t-1], param_.controller.step_len_sec, param_
-                );
-            }
+            // Get current slip factor
+            double slip_factor = use_estimator_ ? adaptive_estimator_->getSlipFactor() : 0.0;
+
+            x = target_system_mppi_4d::calcNextState(
+                x, u_curr, param_.controller.step_len_sec, param_, slip_factor
+            );
             x_samples_[k][t-1] = x; // save x_samples
 
             // add stage cost
@@ -318,7 +160,8 @@ common_type::VxVyOmega MPPI4DCore::solveMPPI(
                     distance_error_map,
                     ref_yaw_map,
                     goal_state,
-                    param_
+                    param_,
+                    slip_factor
             );
             costs_[k] += param_.controller.param_lambda * (1.0 - param_.controller.param_alpha) \
              * u_opt_seq_latest_[t-1].eigen().transpose() * (sigma_[t-1].eigen().asDiagonal().inverse()) * u_samples_[k][t-1].eigen();
@@ -329,6 +172,9 @@ common_type::VxVyOmega MPPI4DCore::solveMPPI(
 
     // calculate weight for each sample
     weights_ = calcWeightsOfSamples(costs_);
+
+    // Update Covariance (Adaptive MPPI)
+    // updateCovariance(); // Disabled: Causing instability in turns
 
     // calculate optimal control command
     ControlSeq u_opt_seq = u_opt_seq_latest_;
@@ -359,43 +205,15 @@ common_type::VxVyOmega MPPI4DCore::solveMPPI(
     // calculate and save optimal state trajectory
     state_cost_ = 0.0;
     x_opt_seq_[0] = target_system_mppi_4d::convertXYYawToStateSpace3D(observed_state);
+    
+    // Get current slip factor
+    double slip_factor = use_estimator_ ? adaptive_estimator_->getSlipFactor() : 0.0;
+
     for (int t = 1; t < T; t++)
     {
-        // Apply MLP to optimal trajectory prediction as well
-        Control u_curr = u_opt_seq[t-1];
-        
-        // Estimate body velocity for MLP
-        double L = param_.target_system.l_f;
-        double R = param_.target_system.tire_radius;
-        double v_fl = u_curr.fl_vel * R;
-        double vx_fl = v_fl * std::cos(u_curr.fl_steer);
-        double vy_fl = v_fl * std::sin(u_curr.fl_steer);
-        double v_rr = u_curr.rr_vel * R;
-        double vx_rr = v_rr * std::cos(u_curr.rr_steer);
-        double vy_rr = v_rr * std::sin(u_curr.rr_steer);
-        double vx_est = (vx_fl + vx_rr) / 2.0;
-        double vy_est = (vy_fl + vy_rr) / 2.0;
-        double w_est = 0.0;
-
-        std::vector<double> wheel_params = {
-            u_curr.fl_vel, u_curr.fl_vel, u_curr.rr_vel, u_curr.rr_vel,
-            u_curr.fl_steer, u_curr.fl_steer, u_curr.rr_steer, u_curr.rr_steer
-        };
-        
-        Eigen::VectorXd input = mppi_h_adaptive::AdaptiveEstimator::prepareInput(vx_est, vy_est, w_est, wheel_params);
-        Eigen::VectorXd residual = adaptive_estimator_->forward(input);
-
         x_opt_seq_[t] = target_system_mppi_4d::calcNextState(
-            x_opt_seq_[t-1], u_opt_seq[t-1], param_.controller.step_len_sec, param_
+            x_opt_seq_[t-1], u_opt_seq[t-1], param_.controller.step_len_sec, param_, slip_factor
         );
-        
-        // Apply residual
-        double dt = param_.controller.step_len_sec;
-        double yaw = x_opt_seq_[t].yaw;
-        x_opt_seq_[t].x += (residual(0) * std::cos(yaw) - residual(1) * std::sin(yaw)) * dt;
-        x_opt_seq_[t].y += (residual(0) * std::sin(yaw) + residual(1) * std::cos(yaw)) * dt;
-        x_opt_seq_[t].yaw += residual(2) * dt;
-        x_opt_seq_[t].unwrap();
 
         // add stage cost
         Control prev_control_input = (t == 1) ? u_opt_latest_ : u_opt_seq_latest_[t-2];
@@ -697,7 +515,7 @@ void MPPI4DCore::updateEstimator(const common_type::XYYaw& state, const common_t
         return;
     }
 
-    // Calculate target residual
+    // Calculate actual velocities from state change
     double vx_inst = (next_state.x - state.x) * std::cos(state.yaw) + (next_state.y - state.y) * std::sin(state.yaw);
     vx_inst /= dt;
     
@@ -712,85 +530,57 @@ void MPPI4DCore::updateEstimator(const common_type::XYYaw& state, const common_t
     avg_vy_actual_ = alpha * vy_inst + (1.0 - alpha) * avg_vy_actual_;
     avg_w_actual_ = alpha * w_inst + (1.0 - alpha) * avg_w_actual_;
     
-    Eigen::VectorXd target_residual(3);
-    target_residual(0) = avg_vx_actual_ - control.vx;
-    target_residual(1) = avg_vy_actual_ - control.vy;
-    target_residual(2) = avg_w_actual_ - control.omega;
-    
-    // Deadband: If residual is small, assume it's noise and don't train
-    if (std::abs(target_residual(0)) < 0.05 && std::abs(target_residual(1)) < 0.05 && std::abs(target_residual(2)) < 0.05) {
-        return;
-    }
-    
-    // Prepare input
-    // Note: In 4D mode, we might not have the exact wheel commands that produced this motion 
-    // if we only have the 3D body command 'control' passed to this function.
-    // However, MPPI_H passes 'previous_control_' which is VxVyOmega.
-    // We need to convert this 3D command to 8D wheel commands to train the network consistently.
-    // We can use the 3D->8D conversion from MPPI3D settings (assuming same kinematics).
-    
-    // We need access to the conversion function. It is in target_system_mppi_3d namespace.
-    // But we are in mppi_4d_core.
-    // We can include mppi_3d_setting.hpp or duplicate the logic.
-    // Since we are in the same package, we can include it.
-    
-    // But wait, MPPI4DCore doesn't know about MPPI3DParam.
-    // Let's approximate or use zero for wheel params if we can't easily convert.
-    // OR, better, we should pass the actual wheel commands used if possible.
-    // But the interface `updateEstimator` takes `VxVyOmega`.
-    
-    // Let's assume for training, we use the 3D command and its ideal kinematic wheel commands.
-    // This keeps training consistent with the 3D mode usage.
-    
-    // We need to implement the conversion here or link to it.
-    // For simplicity, let's implement a basic conversion here using the parameters we have.
-    
-    double L = param_.target_system.l_f; // Assume l_f = l_r
-    double W = param_.target_system.d_l; // Assume d_l = d_r
-    double R = param_.target_system.tire_radius;
-    
-    double vx = control.vx;
-    double vy = control.vy;
-    double omega = control.omega;
-    
-    // FL
-    double v_fl_x = vx - W * omega;
-    double v_fl_y = vy + L * omega;
-    double rotor_fl = std::sqrt(v_fl_x*v_fl_x + v_fl_y*v_fl_y) / R;
-    double steer_fl = std::atan2(v_fl_y, v_fl_x);
-    
-    // FR
-    double v_fr_x = vx + W * omega;
-    double v_fr_y = vy + L * omega;
-    double rotor_fr = std::sqrt(v_fr_x*v_fr_x + v_fr_y*v_fr_y) / R;
-    double steer_fr = std::atan2(v_fr_y, v_fr_x);
-    
-    // RL
-    double v_rl_x = vx - W * omega;
-    double v_rl_y = vy - L * omega;
-    double rotor_rl = std::sqrt(v_rl_x*v_rl_x + v_rl_y*v_rl_y) / R;
-    double steer_rl = std::atan2(v_rl_y, v_rl_x);
-    
-    // RR
-    double v_rr_x = vx + W * omega;
-    double v_rr_y = vy - L * omega;
-    double rotor_rr = std::sqrt(v_rr_x*v_rr_x + v_rr_y*v_rr_y) / R;
-    double steer_rr = std::atan2(v_rr_y, v_rr_x);
+    // Update estimator
+    adaptive_estimator_->update(control.vx, control.vy, control.omega,
+                                avg_vx_actual_, avg_vy_actual_, avg_w_actual_,
+                                dt);
+}
 
-    std::vector<double> wheel_params = {
-        rotor_fl, rotor_fr, rotor_rl, rotor_rr,
-        steer_fl, steer_fr, steer_rl, steer_rr
-    };
+// Covariance Adaptation
+void MPPI4DCore::updateCovariance()
+{
+    // Calculate weighted covariance of the noise
+    // sigma_new^2 = sum(w_k * noise_k^2)
     
-    Eigen::VectorXd input = mppi_h_adaptive::AdaptiveEstimator::prepareInput(vx, vy, omega, wheel_params);
-    
-    // Train
-    double error = adaptive_estimator_->train(input, target_residual);
-    
-    // Log error occasionally
-    static int train_count = 0;
-    if (train_count++ % 10 == 0) {
-        std::cout << "[MPPI4D] Estimator Error: " << error << std::endl;
+    // We update sigma_ for each time step t and each dimension u
+    for (int t = 0; t < T; t++)
+    {
+        double var_fl_steer = 0.0;
+        double var_rr_steer = 0.0;
+        double var_fl_vel = 0.0;
+        double var_rr_vel = 0.0;
+        
+        for (int k = 0; k < K; k++)
+        {
+            double w = weights_[k];
+            // noises_[k][t] is the noise vector (epsilon)
+            var_fl_steer += w * std::pow(noises_[k][t].fl_steer, 2);
+            var_rr_steer += w * std::pow(noises_[k][t].rr_steer, 2);
+            var_fl_vel   += w * std::pow(noises_[k][t].fl_vel, 2);
+            var_rr_vel   += w * std::pow(noises_[k][t].rr_vel, 2);
+        }
+        
+        // Update sigma with smoothing
+        // sigma_ is standard deviation, so we take sqrt of var
+        double sigma_fl_steer_new = std::sqrt(var_fl_steer);
+        double sigma_rr_steer_new = std::sqrt(var_rr_steer);
+        double sigma_fl_vel_new   = std::sqrt(var_fl_vel);
+        double sigma_rr_vel_new   = std::sqrt(var_rr_vel);
+        
+        // Apply learning rate
+        sigma_[t].fl_steer = (1.0 - cov_adaptation_rate_) * sigma_[t].fl_steer + cov_adaptation_rate_ * sigma_fl_steer_new;
+        sigma_[t].rr_steer = (1.0 - cov_adaptation_rate_) * sigma_[t].rr_steer + cov_adaptation_rate_ * sigma_rr_steer_new;
+        sigma_[t].fl_vel   = (1.0 - cov_adaptation_rate_) * sigma_[t].fl_vel   + cov_adaptation_rate_ * sigma_fl_vel_new;
+        sigma_[t].rr_vel   = (1.0 - cov_adaptation_rate_) * sigma_[t].rr_vel   + cov_adaptation_rate_ * sigma_rr_vel_new;
+        
+        // Clamp to min/max
+        double min_s = 0.05;
+        double max_s = 2.0;
+        
+        sigma_[t].fl_steer = std::max(min_s, std::min(max_s, sigma_[t].fl_steer));
+        sigma_[t].rr_steer = std::max(min_s, std::min(max_s, sigma_[t].rr_steer));
+        sigma_[t].fl_vel   = std::max(min_s, std::min(max_s, sigma_[t].fl_vel));
+        sigma_[t].rr_vel   = std::max(min_s, std::min(max_s, sigma_[t].rr_vel));
     }
 }
 

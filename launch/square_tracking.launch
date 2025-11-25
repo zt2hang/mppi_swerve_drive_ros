@@ -1,7 +1,7 @@
 <launch>
   <!-- Arguments -->
   <arg name="gazebo_world_name" default="tiles" />
-  <arg name="wheel_friction" default="0.08" />
+  <arg name="wheel_friction" default="0.3" />
   <arg name="side_length" default="10.0" />
   <arg name="turn_radius" default="0.2" />
   <arg name="workspace" default="$(env HOME)/planner_code/mppi_swerve_drive_ros" />

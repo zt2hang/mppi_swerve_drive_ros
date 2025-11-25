@@ -58,16 +58,22 @@ inline ControlSpace8D convertControlSpace3DToControlSpace8D(const ControlSpace3D
 }
 
 // define state updating rule
-inline StateSpace3D calcNextState(const StateSpace3D& current_state, const ControlSpace3D& cmd, const double dt)
+inline StateSpace3D calcNextState(const StateSpace3D& current_state, const ControlSpace3D& cmd, const double dt, double slip_factor = 0.0)
 {
     // clamp control input
     ControlSpace3D clamped_cmd = cmd;
     clamped_cmd.clamp();
 
+    // Apply Slip Model
+    // v_y_actual = v_y_cmd - slip_factor * (v_x * omega)
+    // This reduces the effective lateral velocity when cornering hard
+    double vy_slip = - slip_factor * clamped_cmd.vx * clamped_cmd.omega;
+    double vy_effective = clamped_cmd.vy + vy_slip;
+
     // calculate next state
     StateSpace3D next_state;
-    next_state.x = current_state.x + clamped_cmd.vx * std::cos(current_state.yaw) * dt - clamped_cmd.vy * std::sin(current_state.yaw) * dt;
-    next_state.y = current_state.y + clamped_cmd.vx * std::sin(current_state.yaw) * dt + clamped_cmd.vy * std::cos(current_state.yaw) * dt;
+    next_state.x = current_state.x + clamped_cmd.vx * std::cos(current_state.yaw) * dt - vy_effective * std::sin(current_state.yaw) * dt;
+    next_state.y = current_state.y + clamped_cmd.vx * std::sin(current_state.yaw) * dt + vy_effective * std::cos(current_state.yaw) * dt;
     next_state.yaw = current_state.yaw + clamped_cmd.omega * dt;
     next_state.unwrap(); // unwrap yaw angle
 
@@ -89,7 +95,8 @@ namespace controller_mppi_3d
         const grid_map::GridMap& distance_error_map,
         const grid_map::GridMap& ref_yaw_map,
         const target_system_mppi_3d::StateSpace3D& goal_state,
-        const param::MPPI3DParam& param
+        const param::MPPI3DParam& param,
+        double slip_factor = 0.0
     )
     {
         // clamp control input
@@ -98,6 +105,13 @@ namespace controller_mppi_3d
 
         // initialize stage cost
         double cost = 0.0;
+
+        // Penalize Slip Risk (Lateral Acceleration Demand)
+        // We penalize the *potential* for slip, which is proportional to slip_factor * (vx * omega)
+        // Or simply penalize lateral acceleration if slip_factor is high.
+        // Cost = weight * (slip_factor * vx * omega)^2
+        double slip_velocity = slip_factor * control_input.vx * control_input.omega;
+        cost += param.controller.weight_slip_penalty * (slip_velocity * slip_velocity);
 
         // only when the vehicle is not close to the goal
         // for circular or square path tracking

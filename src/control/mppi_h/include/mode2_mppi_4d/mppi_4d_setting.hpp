@@ -147,7 +147,7 @@ inline ControlSpace8D convertControlSpace4DToControlSpace8D(const ControlSpace4D
 }
 
 // define state updating rule
-inline StateSpace3D calcNextState(const StateSpace3D& current_state, const ControlSpace4D& cmd4d, const double dt, const param::MPPI4DParam& param)
+inline StateSpace3D calcNextState(const StateSpace3D& current_state, const ControlSpace4D& cmd4d, const double dt, const param::MPPI4DParam& param, double slip_factor = 0.0)
 {
     // clamp control input
     ControlSpace4D clamped_input4d = cmd4d;
@@ -156,10 +156,15 @@ inline StateSpace3D calcNextState(const StateSpace3D& current_state, const Contr
     // convert ControlSpace4D to VxVyOmega
     common_type::VxVyOmega clamped_input3d = convertControlSpace4DToVxVyOmega(clamped_input4d, param);
 
+    // Apply Slip Model
+    // v_y_actual = v_y_cmd - slip_factor * (v_x * omega)
+    double vy_slip = - slip_factor * clamped_input3d.vx * clamped_input3d.omega;
+    double vy_effective = clamped_input3d.vy + vy_slip;
+
     // calculate next state
     StateSpace3D next_state;
-    next_state.x = current_state.x + clamped_input3d.vx * std::cos(current_state.yaw) * dt - clamped_input3d.vy * std::sin(current_state.yaw) * dt;
-    next_state.y = current_state.y + clamped_input3d.vx * std::sin(current_state.yaw) * dt + clamped_input3d.vy * std::cos(current_state.yaw) * dt;
+    next_state.x = current_state.x + clamped_input3d.vx * std::cos(current_state.yaw) * dt - vy_effective * std::sin(current_state.yaw) * dt;
+    next_state.y = current_state.y + clamped_input3d.vx * std::sin(current_state.yaw) * dt + vy_effective * std::cos(current_state.yaw) * dt;
     next_state.yaw = current_state.yaw + clamped_input3d.omega * dt;
     next_state.unwrap(); // unwrap yaw angle
 
@@ -181,7 +186,8 @@ namespace controller_mppi_4d
         const grid_map::GridMap& distance_error_map,
         const grid_map::GridMap& ref_yaw_map,
         const target_system_mppi_4d::StateSpace3D& goal_state,
-        const param::MPPI4DParam& param
+        const param::MPPI4DParam& param,
+        double slip_factor = 0.0
     )
     {
         // clamp control input
@@ -194,6 +200,10 @@ namespace controller_mppi_4d
 
         // initialize stage cost
         double cost = 0.0;
+
+        // Penalize Slip Risk
+        double slip_velocity = slip_factor * control_input3d.vx * control_input3d.omega;
+        cost += param.controller.weight_slip_penalty * (slip_velocity * slip_velocity);
 
         // only when the vehicle is not close to the goal
         // for circular or square path tracking
