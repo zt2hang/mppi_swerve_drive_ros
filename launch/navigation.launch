@@ -5,7 +5,7 @@
   <!-- often changed arguments -->
   <arg name="gazebo_world_name" default="tiles" /> <!-- empty, empty_garden, cylinder_garden, maze, tiles, maze_tiles -->
   <arg name="joy_operation" default="false" />
-  <arg name="local_planner" default="mppi_h" /> <!-- mppi_3d_a, mppi_3d_b, mppi_4d, mppi_h -->
+  <arg name="local_planner" default="mppi_h" /> <!-- mppi_3d_a, mppi_3d_b, mppi_4d, mppi_h, mppi_hc -->
   <arg name="wheel_friction" default="0.8" />
   <arg name="use_amcl" default="true" />
 
@@ -151,6 +151,31 @@
   <!-- MPPI-H (switching MPPI-3D and MPPI-4D in real-time) -->
   <group if="$(eval local_planner=='mppi_h')">
       <include file="$(find mppi_h)/launch/mppi_h.launch" />
+
+      <!-- reference_costmap_generator -->
+      <include file="$(find reference_costmap_generator)/launch/reference_costmap_generator.launch" />
+
+      <!-- launch global planner -->
+      <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+          <param name="base_local_planner" value="base_local_planner/TrajectoryPlannerROS" />
+          <rosparam file="$(arg workspace)/config/base_local_planner.yaml" command="load" />
+          <rosparam file="$(arg workspace)/config/costmap_common_global.yaml" command="load" ns="global_costmap" />
+          <rosparam file="$(arg workspace)/config/costmap_common_local.yaml" command="load" ns="local_costmap" />
+          <rosparam file="$(arg workspace)/config/costmap_local.yaml" command="load" />
+          <rosparam file="$(arg workspace)/config/costmap_global.yaml" command="load" />
+          <rosparam file="$(arg workspace)/config/move_base.yaml" command="load" />
+          <remap from="cmd_vel" to="/no_use/cmd_vel"/>
+          <remap from="odom" to="$(arg odom_topic)"/>
+          <remap from="scan" to="$(arg scan_topic)"/>
+      </node>
+
+      <!-- launch vel_driver to operate 4WIDS vehicle with /cmd_vel-->
+      <include file="$(find vel_driver)/launch/vel_driver.launch" />
+  </group>
+
+  <!-- MPPI-HC (Hierarchical Compensated MPPI with slip estimation) -->
+  <group if="$(eval local_planner=='mppi_hc')">
+      <include file="$(find mppi_hc)/launch/mppi_hc.launch" />
 
       <!-- reference_costmap_generator -->
       <include file="$(find reference_costmap_generator)/launch/reference_costmap_generator.launch" />

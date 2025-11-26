@@ -1,0 +1,60 @@
+# MPPI-HC Configuration for Extreme Low-Friction Testing
+# Optimized for friction coefficient mu = 0.15 (ice-like surface)
+# This configuration should show clear advantages of slip compensation
+
+# Vehicle parameters
+vehicle:
+  l_f: 0.5
+  l_r: 0.5
+  d_l: 0.5
+  d_r: 0.5
+  tire_radius: 0.2
+  vx_max: 1.2               # Very conservative max speed
+  vy_max: 1.2
+  omega_max: 1.5
+  max_steer_angle: 1.57
+  max_wheel_vel: 10.0
+
+# MPPI parameters - more conservative for extreme slip
+mppi:
+  num_samples: 4000         # More samples for difficult conditions
+  horizon: 50               # Longer horizon
+  dt: 0.033
+  lambda: 150.0             # Balanced exploration/exploitation
+  alpha: 0.98               # Strong smoothing
+  exploration_ratio: 0.08   # Less exploration
+  ref_velocity: 1.0         # Lower reference velocity
+  noise_vx: 0.4
+  noise_vy: 0.4
+  noise_omega: 0.7
+
+# Cost function weights - emphasis on slip handling
+cost:
+  distance_error: 80.0      # Strong path tracking
+  angular_error: 35.0
+  velocity_error: 8.0
+  terminal_state: 15.0
+  collision: 80.0
+  slip_risk: 35.0           # High slip penalty
+  curvature_speed: 100.0    # Very strong curvature speed regulation
+  yaw_rate_tracking: 40.0   # Strong yaw rate tracking for turns
+
+# Slip parameters - aggressive compensation for extreme slip
+slip:
+  learning_rate: 0.02       # Fast adaptation
+  slip_factor_min: 0.0
+  slip_factor_max: 0.8      # Allow very high slip estimates
+  excitation_threshold: 0.05
+  base_friction_coeff: 0.15 # Matches ice-like friction
+  curvature_lookahead: 1.0  # Look further ahead
+  curvature_floor: 0.3
+  speed_margin: 0.5         # Large safety margin
+  enable_compensation: true
+  compensation_gain: 0.95   # Near-full compensation
+
+# Savitzky-Golay filter
+use_sg_filter: true
+sg_half_window: 6
+sg_poly_order: 4
+
+control_rate: 50.0

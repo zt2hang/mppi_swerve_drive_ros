@@ -1,0 +1,55 @@
+# MPPI-HC Controller Configuration
+# Hierarchical Compensated Model Predictive Path Integral
+
+# Vehicle parameters
+vehicle:
+  l_f: 0.5                  # Front axle to CoG [m]
+  l_r: 0.5                  # Rear axle to CoG [m]
+  d_l: 0.5                  # Left wheel to CoG [m]
+  d_r: 0.5                  # Right wheel to CoG [m]
+  tire_radius: 0.2          # Tire radius [m]
+  vx_max: 3.0               # Max forward velocity [m/s]
+  vy_max: 3.0               # Max lateral velocity [m/s]
+  omega_max: 3.0            # Max angular velocity [rad/s]
+  max_steer_angle: 1.57     # Max steering angle [rad] (~90 deg)
+  max_wheel_vel: 10.0       # Max wheel velocity [rad/s]
+
+# MPPI parameters
+mppi:
+  num_samples: 3000         # Number of sampled trajectories
+  horizon: 40               # Prediction horizon steps (matched to mppi_h)
+  dt: 0.033                 # [s] Time step
+  lambda: 200.0             # Temperature parameter (higher = less exploration, more exploitation)
+  alpha: 0.975              # Control sequence smoothing factor
+  exploration_ratio: 0.1    # Ratio of exploration samples
+  ref_velocity: 2.0         # Reference velocity [m/s]
+  noise_vx: 0.55            # [m/s] Noise std for vx sampling (matched to mppi_h)
+  noise_vy: 0.55            # [m/s] Noise std for vy sampling
+  noise_omega: 0.96         # [rad/s] Noise std for omega sampling
+
+# Cost function weights (matched to mppi_h mode1)
+cost:
+  distance_error: 60.0      # Distance to reference path weight (increased!)
+  angular_error: 30.0       # Heading error weight
+  velocity_error: 10.0      # Velocity tracking weight
+  terminal_state: 10.0      # Terminal state cost
+  collision: 50.0           # Collision cost weight
+  slip_risk: 15.0           # Slip risk cost weight
+  curvature_speed: 60.0     # Curvature-aware speed regulation weight
+  yaw_rate_tracking: 25.0   # Yaw rate tracking weight (omnidirectional)
+
+# Slip estimation and compensation parameters
+slip:
+  learning_rate: 0.01       # Online learning rate for gradient descent
+  slip_factor_min: 0.0      # Minimum allowed slip factor
+  slip_factor_max: 0.3      # Maximum allowed slip factor
+  excitation_threshold: 0.1 # Min |vx*omega| for learning
+  base_friction_coeff: 0.3  # Base friction coefficient
+  curvature_lookahead: 0.5  # [m] Lookahead for curvature
+  curvature_floor: 0.5      # Min effective curvature for omni robots
+  speed_margin: 0.3         # Speed tolerance ratio
+  enable_compensation: true # Enable feedforward compensation
+  compensation_gain: 0.7    # Feedforward compensation gain gamma (0-1)
+
+# Control timing
+control_rate: 50.0          # [Hz] Control loop frequency

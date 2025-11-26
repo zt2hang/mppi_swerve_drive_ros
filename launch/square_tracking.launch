@@ -4,6 +4,7 @@
   <arg name="wheel_friction" default="0.3" />
   <arg name="side_length" default="20.0" />
   <arg name="turn_radius" default="0.2" />
+  <arg name="local_planner" default="mppi_hc" /> <!-- mppi_h, mppi_hc -->
   <arg name="workspace" default="$(env HOME)/planner_code/mppi_swerve_drive_ros" />
 
   <!-- Calculate initial pose based on side_length -->
@@ -14,6 +15,7 @@
   <include file="$(arg workspace)/launch/navigation.launch">
     <arg name="gazebo_world_name" value="$(arg gazebo_world_name)" />
     <arg name="wheel_friction" value="$(arg wheel_friction)" />
+    <arg name="local_planner" value="$(arg local_planner)" />
     <arg name="initial_pose_x" value="0.0" />
     <arg name="initial_pose_y" value="0.0" />
     <arg name="initial_pose_yaw" value="0.0" />
