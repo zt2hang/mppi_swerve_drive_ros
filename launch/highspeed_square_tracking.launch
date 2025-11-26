@@ -1,0 +1,35 @@
+<launch>
+  <!-- High-Speed Square Tracking Test -->
+  <!-- Higher reference velocity increases slip effects at corners -->
+
+  <arg name="gazebo_world_name" default="tiles_large" />
+  <arg name="wheel_friction" default="0.3" />
+  <arg name="side_length" default="15.0" />
+  <arg name="turn_radius" default="0.2" />
+  <arg name="local_planner" default="mppi_h" />
+  <arg name="ref_velocity" default="2.5" />  <!-- Higher speed -->
+  <arg name="workspace" default="$(env HOME)/planner_code/mppi_swerve_drive_ros" />
+
+  <!-- Launch Navigation -->
+  <include file="$(arg workspace)/launch/navigation.launch">
+    <arg name="gazebo_world_name" value="$(arg gazebo_world_name)" />
+    <arg name="wheel_friction" value="$(arg wheel_friction)" />
+    <arg name="local_planner" value="$(arg local_planner)" />
+    <arg name="initial_pose_x" value="0.0" />
+    <arg name="initial_pose_y" value="0.0" />
+    <arg name="initial_pose_yaw" value="0.0" />
+    <arg name="use_amcl" value="false" />
+  </include>
+
+  <!-- Publish Square Path -->
+  <node pkg="mppi_h_square_test" type="publish_square_path.py" name="square_path_publisher" output="screen">
+    <param name="side_length" value="$(arg side_length)" />
+    <param name="turn_radius" value="$(arg turn_radius)" />
+  </node>
+
+  <!-- Override reference velocity for mppi controllers -->
+  <param name="/mppi_h/controller/mode1/reference_velocity" value="$(arg ref_velocity)" />
+  <param name="/mppi_h/controller/mode2/reference_velocity" value="$(arg ref_velocity)" />
+  <param name="/mppi_hc_node/mppi/ref_velocity" value="$(arg ref_velocity)" />
+
+</launch>

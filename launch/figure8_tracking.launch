@@ -1,0 +1,28 @@
+<launch>
+  <!-- Figure-8 Path Tracking Test -->
+  <!-- This scenario is designed to test slip compensation effectiveness -->
+  <!-- Continuous turning maximizes slip effects -->
+
+  <arg name="gazebo_world_name" default="tiles_large" />
+  <arg name="wheel_friction" default="0.3" />  <!-- Low friction to emphasize slip -->
+  <arg name="radius" default="5.0" />          <!-- Radius of figure-8 lobes -->
+  <arg name="local_planner" default="mppi_h" />
+  <arg name="workspace" default="$(env HOME)/planner_code/mppi_swerve_drive_ros" />
+
+  <!-- Launch Navigation -->
+  <include file="$(arg workspace)/launch/navigation.launch">
+    <arg name="gazebo_world_name" value="$(arg gazebo_world_name)" />
+    <arg name="wheel_friction" value="$(arg wheel_friction)" />
+    <arg name="local_planner" value="$(arg local_planner)" />
+    <arg name="initial_pose_x" value="0.0" />
+    <arg name="initial_pose_y" value="0.0" />
+    <arg name="initial_pose_yaw" value="0.0" />
+    <arg name="use_amcl" value="false" />
+  </include>
+
+  <!-- Publish Figure-8 Path -->
+  <node pkg="mppi_h_square_test" type="publish_figure8_path.py" name="figure8_path_publisher" output="screen">
+    <param name="radius" value="$(arg radius)" />
+  </node>
+
+</launch>

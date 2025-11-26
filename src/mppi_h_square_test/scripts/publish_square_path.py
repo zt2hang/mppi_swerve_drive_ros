@@ -24,6 +24,8 @@ class SquarePathPublisher:
         rospy.on_shutdown(self.print_statistics)
         
         self.current_s = 0.0
+        self.start_time = rospy.Time.now()
+        self.warmup_duration = rospy.Duration(4.0)  # Skip first 2 seconds
         self.timer = rospy.Timer(rospy.Duration(0.2), self.timer_callback) # 5Hz
         
         rospy.spin()
@@ -31,8 +33,11 @@ class SquarePathPublisher:
     def odom_callback(self, msg):
         x = msg.pose.pose.position.x
         y = msg.pose.pose.position.y
-        error = self.calculate_min_distance(x, y)
-        self.errors.append(error)
+        
+        # Only collect errors after warmup period
+        if rospy.Time.now() - self.start_time > self.warmup_duration:
+            error = self.calculate_min_distance(x, y)
+            self.errors.append(error)
         
         # Update current_s estimate
         # We search locally around current_s to find the closest point

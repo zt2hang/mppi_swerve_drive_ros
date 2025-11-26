@@ -1,0 +1,99 @@
+<launch>
+  <!-- 
+  Extreme Low-Friction Square Tracking Test
+  
+  Purpose: Test conditions where slip compensation provides maximum benefit
+  - Very low friction (mu=0.15, ice-like)
+  - Moderate speed to still allow control
+  - Sharp 90° corners that maximize lateral slip
+  
+  Usage:
+    roslaunch mppi_swerve_drive_ros extreme_friction_tracking.launch local_planner:=mppi_h
+    roslaunch mppi_swerve_drive_ros extreme_friction_tracking.launch local_planner:=mppi_hc
+  -->
+
+  <arg name="local_planner" default="mppi_hc" />
+  <arg name="wheel_friction" default="0.15" />
+  <arg name="ref_velocity" default="1.0" />
+  <arg name="rviz" default="true" />
+
+  <arg name="workspace" default="$(env HOME)/planner_code/mppi_swerve_drive_ros" />
+
+  <!-- Set use_sim_time -->
+  <param name="/use_sim_time" value="true" />
+
+  <!-- Load world and robot -->
+  <include file="$(arg workspace)/launch/gazebo_world.launch">
+    <arg name="gazebo_world_name" value="tiles" />
+    <arg name="use_joystick" value="false" />
+    <arg name="use_vel_driver" value="false" />
+    <arg name="open_rviz" value="false" />
+    <arg name="wheel_friction" value="$(arg wheel_friction)" />
+  </include>
+
+  <!-- Map server -->
+  <node pkg="map_server" type="map_server" name="map_server" args="$(arg workspace)/data/map/tiles/map.yaml" />
+
+  <!-- 3d map visualizer -->
+  <include file="$(find map_visualizer)/launch/map_visualizer.launch">
+    <arg name="map_name" value="tiles" />
+  </include>
+
+  <!-- AMCL -->
+  <node pkg="amcl" type="amcl" name="amcl">
+    <param name="initial_pose_x" value="0.0"/>
+    <param name="initial_pose_y" value="0.0"/>
+    <param name="initial_pose_a" value="0.0"/>
+    <remap from="scan" to="/laser_link/scan"/>
+    <rosparam file="$(arg workspace)/config/amcl.yaml" command="load" />
+  </node>
+
+  <!-- Reference costmap generator -->
+  <include file="$(find reference_costmap_generator)/launch/reference_costmap_generator.launch" />
+
+  <!-- Global planner (move_base) -->
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    <param name="base_local_planner" value="base_local_planner/TrajectoryPlannerROS" />
+    <rosparam file="$(arg workspace)/config/base_local_planner.yaml" command="load" />
+    <rosparam file="$(arg workspace)/config/costmap_common_global.yaml" command="load" ns="global_costmap" />
+    <rosparam file="$(arg workspace)/config/costmap_common_local.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(arg workspace)/config/costmap_local.yaml" command="load" />
+    <rosparam file="$(arg workspace)/config/costmap_global.yaml" command="load" />
+    <rosparam file="$(arg workspace)/config/move_base.yaml" command="load" />
+    <remap from="cmd_vel" to="/no_use/cmd_vel"/>
+    <remap from="odom" to="/groundtruth_odom"/>
+    <remap from="scan" to="/laser_link/scan"/>
+  </node>
+
+  <!-- Local planner: MPPI-H -->
+  <group if="$(eval local_planner=='mppi_h')">
+    <include file="$(find mppi_h)/launch/mppi_h.launch" />
+  </group>
+
+  <!-- Local planner: MPPI-HC with ice config -->
+  <group if="$(eval local_planner=='mppi_hc')">
+    <include file="$(find mppi_hc)/launch/mppi_hc.launch">
+      <arg name="config_file" value="$(find mppi_hc)/config/mppi_hc_ice.yaml"/>
+    </include>
+  </group>
+
+  <!-- Vel driver -->
+  <include file="$(find vel_driver)/launch/vel_driver.launch" />
+
+  <!-- Square path publisher with slower speed for extreme friction -->
+  <node pkg="mppi_h_square_test" type="publish_rect_path.py" name="path_publisher" output="screen">
+    <param name="ref_velocity" value="$(arg ref_velocity)" />
+  </node>
+
+  <!-- RViz -->
+  <group if="$(arg rviz)">
+    <node pkg="rviz" type="rviz" name="rviz" 
+          args="-d $(arg workspace)/data/rviz/mppi_eval.rviz" />
+  </group>
+
+  <!-- Path tracker evaluator -->
+  <node pkg="mppi_h_square_test" type="path_tracker.py" name="path_tracker" output="screen">
+    <param name="eval_name" value="$(arg local_planner)_extreme_friction" />
+  </node>
+
+</launch>
