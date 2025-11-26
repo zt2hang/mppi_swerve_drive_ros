@@ -1,7 +1,7 @@
 <launch>
   <!-- Arguments -->
   <arg name="gazebo_world_name" default="tiles_large" />
-  <arg name="wheel_friction" default="0.3" />
+  <arg name="wheel_friction" default="0.15" />
   <arg name="side_length" default="20.0" />
   <arg name="turn_radius" default="0.2" />
   <arg name="local_planner" default="mppi_hc" /> <!-- mppi_h, mppi_hc -->

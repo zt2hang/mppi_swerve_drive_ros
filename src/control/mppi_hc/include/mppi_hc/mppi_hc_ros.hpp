@@ -61,6 +61,7 @@ private:
     // Core controller
     std::unique_ptr<MPPIHCCore> controller_;
     ControllerConfig config_;
+    double feedback_gains_[3] = {2.5, 1.0, 0.5};  // k_lateral, k_heading, k_integral
 
     // State
     State current_state_;
@@ -73,6 +74,10 @@ private:
     grid_map::GridMap collision_map_;
     grid_map::GridMap distance_error_map_;
     grid_map::GridMap ref_yaw_map_;
+    
+    // Reference path for error calculation
+    nav_msgs::Path ref_path_;
+    ros::Time last_control_time_;
 
     // Callbacks
     void odomCallback(const nav_msgs::Odometry::ConstPtr& msg);
@@ -87,6 +92,15 @@ private:
     void publishCommand(const BodyVelocity& cmd);
     void publishVisualization();
     void publishEvalMessage();
+    
+    // Tracking error calculation
+    struct TrackingError {
+        double lateral_error;    // Cross-track error (positive = left of path)
+        double heading_error;    // Heading error (rad)
+        double path_curvature;   // Local curvature (1/m)
+        int closest_idx;         // Index of closest path point
+    };
+    TrackingError computeTrackingError() const;
 };
 
 } // namespace mppi_hc

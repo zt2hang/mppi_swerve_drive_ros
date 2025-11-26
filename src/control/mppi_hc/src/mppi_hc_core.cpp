@@ -241,6 +241,86 @@ BodyVelocity MPPIHCCore::solve(
     return compensated_cmd;
 }
 
+BodyVelocity MPPIHCCore::solveWithFeedback(
+    const State& current_state,
+    const grid_map::GridMap& collision_map,
+    const grid_map::GridMap& distance_error_map,
+    const grid_map::GridMap& ref_yaw_map,
+    const State& goal,
+    double lateral_error,
+    double heading_error,
+    double path_curvature,
+    double dt
+)
+{
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    // Check if goal reached
+    double dist_to_goal = std::sqrt(std::pow(goal.x - current_state.x, 2) + 
+                                    std::pow(goal.y - current_state.y, 2));
+    double yaw_to_goal = std::abs(std::remainder(current_state.yaw - goal.yaw, 2.0 * M_PI));
+    
+    if (dist_to_goal < config_.xy_goal_tolerance && 
+        yaw_to_goal < config_.yaw_goal_tolerance) {
+        goal_reached_ = true;
+        slip_compensator_.resetIntegrator();
+        BodyVelocity stop_cmd;
+        stop_cmd.setZero();
+        return stop_cmd;
+    }
+    goal_reached_ = false;
+
+    // MPPI optimization (Layer 1)
+    generateNoiseSamples();
+    rolloutTrajectories(current_state, collision_map, distance_error_map, ref_yaw_map, goal);
+    computeWeights();
+    updateOptimalSequence();
+
+    // Apply Savitzky-Golay filter if enabled
+    Control u_optimal = optimal_control_seq_[0];
+    if (config_.use_sg_filter && sg_initialized_) {
+        u_optimal = applyFilter(optimal_control_seq_);
+    }
+
+    // =========================================================================
+    // Layer 2 + 3: CLOSED-LOOP Slip Compensation (FF + FB)
+    // =========================================================================
+    double slip_factor = slip_estimator_.getSlipFactor();
+    
+    // Update error integrator
+    slip_compensator_.updateError(lateral_error, dt);
+    
+    // Apply closed-loop compensation
+    BodyVelocity compensated_cmd = slip_compensator_.compensateClosedLoop(
+        u_optimal, slip_factor, lateral_error, heading_error, path_curvature);
+
+    // Clamp final command
+    compensated_cmd.clamp(config_.vehicle.vx_max, config_.vehicle.vy_max, config_.vehicle.omega_max);
+
+    // Update last command
+    last_command_ = compensated_cmd;
+
+    // Compute optimal trajectory for visualization
+    State x = current_state;
+    state_cost_ = 0.0;
+    for (int t = 0; t < T_; ++t) {
+        x = dynamics_.step(x, optimal_control_seq_[t], config_.mppi.step_dt, slip_factor);
+        optimal_trajectory_[t] = x;
+        
+        Control prev_u = (t == 0) ? last_command_ : optimal_control_seq_[t-1];
+        state_cost_ += cost_function_.stageCost(x, optimal_control_seq_[t], prev_u,
+                                                collision_map, distance_error_map, 
+                                                ref_yaw_map, goal, slip_factor);
+    }
+    state_cost_ += cost_function_.terminalCost(x, goal);
+
+    // Record timing
+    auto end_time = std::chrono::high_resolution_clock::now();
+    calc_time_ms_ = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+
+    return compensated_cmd;
+}
+
 void MPPIHCCore::updateEstimator(double actual_vx, double actual_vy, double actual_omega)
 {
     BodyVelocity actual_velocity;

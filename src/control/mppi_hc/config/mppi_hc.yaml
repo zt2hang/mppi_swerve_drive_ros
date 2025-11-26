@@ -49,7 +49,15 @@ slip:
   curvature_floor: 0.5      # Min effective curvature for omni robots
   speed_margin: 0.3         # Speed tolerance ratio
   enable_compensation: true # Enable feedforward compensation
-  compensation_gain: 0.7    # Feedforward compensation gain gamma (0-1)
+  compensation_gain: 0.8    # Feedforward compensation gain gamma (0-1)
+
+# Closed-loop feedback gains for precision tracking
+# These provide cm-level accuracy by correcting residual errors
+# NOTE: Gains are scaled down automatically on straight sections to prevent oscillation
+feedback:
+  k_lateral: 1.5            # Lateral error gain (P term) - reduced for stability
+  k_heading: 0.5            # Heading error gain - reduced for stability
+  k_integral: 0.2           # Integral gain for steady-state error (I term) - reduced
 
 # Control timing
 control_rate: 50.0          # [Hz] Control loop frequency

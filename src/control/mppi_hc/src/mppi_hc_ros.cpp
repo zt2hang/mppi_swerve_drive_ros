@@ -17,6 +17,11 @@ MPPIHCRos::MPPIHCRos(ros::NodeHandle& nh, ros::NodeHandle& private_nh)
 
     // Create controller
     controller_ = std::make_unique<MPPIHCCore>(config_);
+    
+    // Set feedback gains for closed-loop precision tracking
+    controller_->setFeedbackGains(feedback_gains_[0], feedback_gains_[1], feedback_gains_[2]);
+    ROS_INFO("[MPPI-HC] Feedback gains set: k_lat=%.2f, k_head=%.2f, k_int=%.2f",
+             feedback_gains_[0], feedback_gains_[1], feedback_gains_[2]);
 
     // Subscribers
     odom_sub_ = nh_.subscribe("odom", 1, &MPPIHCRos::odomCallback, this);
@@ -97,6 +102,17 @@ void MPPIHCRos::loadParameters()
     private_nh_.param("slip/enable_compensation", config_.slip.enable_compensation, true);
     private_nh_.param("slip/compensation_gain", config_.slip.compensation_gain, 0.7);
 
+    // Feedback gains for closed-loop precision tracking
+    double k_lateral, k_heading, k_integral;
+    private_nh_.param("feedback/k_lateral", k_lateral, 2.5);
+    private_nh_.param("feedback/k_heading", k_heading, 1.0);
+    private_nh_.param("feedback/k_integral", k_integral, 0.5);
+    
+    // Store feedback gains in slip params (will be set after controller creation)
+    feedback_gains_[0] = k_lateral;
+    feedback_gains_[1] = k_heading;
+    feedback_gains_[2] = k_integral;
+
     ROS_INFO("[MPPI-HC] Parameters loaded");
 }
 
@@ -125,6 +141,9 @@ void MPPIHCRos::refPathCallback(const nav_msgs::Path::ConstPtr& msg)
         ROS_WARN_THROTTLE(1.0, "[MPPI-HC] Received empty path");
         return;
     }
+
+    // Store full path for error calculation
+    ref_path_ = *msg;
 
     // Get goal from last pose
     const auto& goal_pose = msg->poses.back().pose;
@@ -164,14 +183,29 @@ void MPPIHCRos::controlTimerCallback(const ros::TimerEvent& event)
     }
 
     auto start_time = ros::Time::now();
+    
+    // Compute time delta
+    double dt = 0.02;  // default
+    if (!last_control_time_.isZero()) {
+        dt = (start_time - last_control_time_).toSec();
+        dt = std::clamp(dt, 0.001, 0.1);  // Sanity check
+    }
+    last_control_time_ = start_time;
 
-    // Solve MPPI with all required maps
-    BodyVelocity cmd = controller_->solve(
+    // Compute tracking errors for closed-loop compensation
+    TrackingError error = computeTrackingError();
+
+    // Solve MPPI with closed-loop feedback compensation
+    BodyVelocity cmd = controller_->solveWithFeedback(
         current_state_, 
         collision_map_, 
         distance_error_map_, 
         ref_yaw_map_, 
-        goal_state_
+        goal_state_,
+        error.lateral_error,
+        error.heading_error,
+        error.path_curvature,
+        dt
     );
 
     // Publish command
@@ -188,6 +222,10 @@ void MPPIHCRos::controlTimerCallback(const ros::TimerEvent& event)
     std_msgs::Float32 time_msg;
     time_msg.data = calc_time;
     calc_time_pub_.publish(time_msg);
+    
+    // Log tracking performance periodically
+    ROS_INFO_THROTTLE(2.0, "[MPPI-HC] Lat_err: %.3fm, Head_err: %.1fdeg, Curv: %.2f",
+                     error.lateral_error, error.heading_error * 180.0 / M_PI, error.path_curvature);
 }
 
 void MPPIHCRos::publishCommand(const BodyVelocity& cmd)
@@ -282,6 +320,79 @@ void MPPIHCRos::publishEvalMessage()
     eval.goal_reached = (pos_error < 0.1);  // 10cm threshold
 
     eval_msg_pub_.publish(eval);
+}
+
+MPPIHCRos::TrackingError MPPIHCRos::computeTrackingError() const
+{
+    TrackingError error;
+    error.lateral_error = 0.0;
+    error.heading_error = 0.0;
+    error.path_curvature = 0.0;
+    error.closest_idx = 0;
+
+    if (ref_path_.poses.size() < 2) {
+        return error;
+    }
+
+    // Find closest point on path
+    double min_dist = std::numeric_limits<double>::max();
+    int closest_idx = 0;
+    
+    for (size_t i = 0; i < ref_path_.poses.size(); ++i) {
+        double dx = ref_path_.poses[i].pose.position.x - current_state_.x;
+        double dy = ref_path_.poses[i].pose.position.y - current_state_.y;
+        double dist = std::hypot(dx, dy);
+        if (dist < min_dist) {
+            min_dist = dist;
+            closest_idx = static_cast<int>(i);
+        }
+    }
+    error.closest_idx = closest_idx;
+
+    // Get path heading at closest point
+    double path_yaw = tf2::getYaw(ref_path_.poses[closest_idx].pose.orientation);
+
+    // Cross-track error (signed)
+    // Positive = robot is to the LEFT of the path
+    double dx = current_state_.x - ref_path_.poses[closest_idx].pose.position.x;
+    double dy = current_state_.y - ref_path_.poses[closest_idx].pose.position.y;
+    error.lateral_error = -dx * std::sin(path_yaw) + dy * std::cos(path_yaw);
+
+    // Heading error
+    error.heading_error = current_state_.yaw - path_yaw;
+    // Normalize to [-pi, pi]
+    while (error.heading_error > M_PI) error.heading_error -= 2.0 * M_PI;
+    while (error.heading_error < -M_PI) error.heading_error += 2.0 * M_PI;
+
+    // Compute local curvature using 3 points
+    int n = static_cast<int>(ref_path_.poses.size());
+    int i0 = std::max(0, closest_idx - 3);
+    int i2 = std::min(n - 1, closest_idx + 3);
+    
+    if (i2 > i0 + 1) {
+        double x0 = ref_path_.poses[i0].pose.position.x;
+        double y0 = ref_path_.poses[i0].pose.position.y;
+        double x1 = ref_path_.poses[closest_idx].pose.position.x;
+        double y1 = ref_path_.poses[closest_idx].pose.position.y;
+        double x2 = ref_path_.poses[i2].pose.position.x;
+        double y2 = ref_path_.poses[i2].pose.position.y;
+
+        // Menger curvature
+        double area2 = std::abs((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0));
+        double d01 = std::hypot(x1 - x0, y1 - y0);
+        double d12 = std::hypot(x2 - x1, y2 - y1);
+        double d20 = std::hypot(x0 - x2, y0 - y2);
+        double denom = d01 * d12 * d20;
+
+        if (denom > 1e-6) {
+            error.path_curvature = area2 / denom;
+            // Sign: positive = left turn
+            double cross = (x1 - x0) * (y2 - y1) - (y1 - y0) * (x2 - x1);
+            error.path_curvature = std::copysign(error.path_curvature, cross);
+        }
+    }
+
+    return error;
 }
 
 } // namespace mppi_hc

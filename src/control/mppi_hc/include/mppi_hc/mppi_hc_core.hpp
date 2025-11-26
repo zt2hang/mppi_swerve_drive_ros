@@ -61,6 +61,35 @@ public:
     );
 
     /**
+     * @brief Solve MPPI with closed-loop feedback compensation
+     * 
+     * This version uses both feedforward slip compensation AND feedback
+     * correction based on actual tracking errors for cm-level accuracy.
+     * 
+     * @param current_state Current robot state
+     * @param collision_map Grid map with collision costs
+     * @param distance_error_map Grid map with distance to reference path
+     * @param ref_yaw_map Grid map with reference heading
+     * @param goal Goal state
+     * @param lateral_error Cross-track error (positive = left of path)
+     * @param heading_error Heading error (rad)
+     * @param path_curvature Local path curvature (1/m)
+     * @param dt Time since last update
+     * @return Optimal velocity command (with closed-loop compensation)
+     */
+    BodyVelocity solveWithFeedback(
+        const State& current_state,
+        const grid_map::GridMap& collision_map,
+        const grid_map::GridMap& distance_error_map,
+        const grid_map::GridMap& ref_yaw_map,
+        const State& goal,
+        double lateral_error,
+        double heading_error,
+        double path_curvature,
+        double dt
+    );
+
+    /**
      * @brief Update slip estimator with actual measurements
      * Call this after receiving odometry
      */
@@ -88,6 +117,11 @@ public:
     // Configuration
     void setConfig(const ControllerConfig& config);
     const ControllerConfig& getConfig() const { return config_; }
+    
+    // Set feedback gains for closed-loop compensation
+    void setFeedbackGains(double k_lateral, double k_heading, double k_integral) {
+        slip_compensator_.setFeedbackGains(k_lateral, k_heading, k_integral);
+    }
 
 private:
     ControllerConfig config_;
