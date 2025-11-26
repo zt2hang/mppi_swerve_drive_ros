@@ -105,6 +105,9 @@ public:
     double getSlipFactor() const { return slip_estimator_.getSlipFactor(); }
     double getCalcTimeMs() const { return calc_time_ms_; }
     double getStateCost() const { return state_cost_; }
+    
+    // Reset compensator integrator (for safety during mode transitions)
+    void resetCompensatorIntegrator() { slip_compensator_.resetIntegrator(); }
 
     // Get trajectories for visualization
     StateSequence getOptimalTrajectory() const { return optimal_trajectory_; }

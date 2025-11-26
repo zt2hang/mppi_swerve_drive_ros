@@ -3,9 +3,9 @@
   <!-- ##### SETTINGS { ##### -->
 
   <!-- often changed arguments -->
-  <arg name="gazebo_world_name" default="tiles" /> <!-- empty, empty_garden, cylinder_garden, maze, tiles, maze_tiles -->
+  <arg name="gazebo_world_name" default="maze" /> <!-- empty, empty_garden, cylinder_garden, maze, tiles, maze_tiles -->
   <arg name="joy_operation" default="false" />
-  <arg name="local_planner" default="mppi_h" /> <!-- mppi_3d_a, mppi_3d_b, mppi_4d, mppi_h, mppi_hc -->
+  <arg name="local_planner" default="mppi_hc" /> <!-- mppi_3d_a, mppi_3d_b, mppi_4d, mppi_h, mppi_hc -->
   <arg name="wheel_friction" default="0.8" />
   <arg name="use_amcl" default="true" />
 

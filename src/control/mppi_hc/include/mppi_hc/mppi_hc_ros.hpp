@@ -78,6 +78,10 @@ private:
     // Reference path for error calculation
     nav_msgs::Path ref_path_;
     ros::Time last_control_time_;
+    
+    // Goal proximity parameters
+    double goal_proximity_threshold_ = 0.8;  // [m]
+    bool goal_feedback_fade_ = true;
 
     // Callbacks
     void odomCallback(const nav_msgs::Odometry::ConstPtr& msg);

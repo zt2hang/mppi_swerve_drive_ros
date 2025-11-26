@@ -113,6 +113,14 @@ void MPPIHCRos::loadParameters()
     feedback_gains_[1] = k_heading;
     feedback_gains_[2] = k_integral;
 
+    // Goal tolerance
+    private_nh_.param("xy_goal_tolerance", config_.xy_goal_tolerance, 0.5);
+    private_nh_.param("yaw_goal_tolerance", config_.yaw_goal_tolerance, 3.14);
+    
+    // Goal proximity behavior
+    private_nh_.param("goal_proximity/threshold", goal_proximity_threshold_, 0.8);
+    private_nh_.param("goal_proximity/feedback_fade", goal_feedback_fade_, true);
+
     ROS_INFO("[MPPI-HC] Parameters loaded");
 }
 
@@ -192,8 +200,60 @@ void MPPIHCRos::controlTimerCallback(const ros::TimerEvent& event)
     }
     last_control_time_ = start_time;
 
+    // Check if we're near the goal - if so, disable feedback to prevent wandering
+    double dist_to_goal = std::hypot(goal_state_.x - current_state_.x, 
+                                      goal_state_.y - current_state_.y);
+    
     // Compute tracking errors for closed-loop compensation
     TrackingError error = computeTrackingError();
+    
+    // ========================================================================
+    // SAFETY: Detect dangerous conditions and reduce/disable feedback
+    // ========================================================================
+    
+    // 1. LOW SPEED CONDITION: Disable feedback at very low speeds to prevent startup jerk
+    double current_speed = std::hypot(current_state_.vx, current_state_.vy);
+    const double low_speed_threshold = 0.3;  // [m/s]
+    if (current_speed < low_speed_threshold) {
+        double speed_factor = current_speed / low_speed_threshold;
+        error.lateral_error *= speed_factor;
+        error.heading_error *= speed_factor;
+        // Reset integrator at low speeds to prevent wind-up
+        if (current_speed < 0.1) {
+            controller_->resetCompensatorIntegrator();
+        }
+    }
+    
+    // 2. SPINNING IN PLACE: If mostly rotating (high omega, low linear vel), reduce lateral feedback
+    double linear_vel = std::hypot(current_state_.vx, current_state_.vy);
+    double angular_ratio = std::abs(current_state_.omega) / (linear_vel + 0.01);
+    if (angular_ratio > 2.0) {  // Rotating faster than translating
+        double spin_factor = std::min(1.0, 2.0 / angular_ratio);
+        error.lateral_error *= spin_factor;  // Reduce lateral feedback during rotation
+        ROS_DEBUG_THROTTLE(0.5, "[MPPI-HC] Spinning detected, lat_err reduced by %.2f", spin_factor);
+    }
+    
+    // 3. LARGE TRACKING ERROR: If far off track, reduce feedback to let MPPI handle recovery
+    const double large_error_threshold = 0.5;  // [m]
+    if (std::abs(error.lateral_error) > large_error_threshold) {
+        double error_factor = large_error_threshold / std::abs(error.lateral_error);
+        error.lateral_error *= error_factor;  // Cap effective error
+        controller_->resetCompensatorIntegrator();  // Prevent integral wind-up
+        ROS_WARN_THROTTLE(1.0, "[MPPI-HC] Large tracking error (%.2fm), reducing feedback", 
+                         std::abs(error.lateral_error) / error_factor);
+    }
+    
+    // 4. NEAR GOAL: Fade out feedback near goal to prevent wandering
+    if (goal_feedback_fade_ && dist_to_goal < goal_proximity_threshold_) {
+        double fade_factor = dist_to_goal / goal_proximity_threshold_;  // 0 at goal, 1 at threshold
+        fade_factor = std::max(0.0, fade_factor);
+        error.lateral_error *= fade_factor;
+        error.heading_error *= fade_factor;
+        error.path_curvature *= fade_factor;
+        
+        ROS_DEBUG_THROTTLE(0.5, "[MPPI-HC] Near goal (%.2fm), feedback fade: %.2f", 
+                          dist_to_goal, fade_factor);
+    }
 
     // Solve MPPI with closed-loop feedback compensation
     BodyVelocity cmd = controller_->solveWithFeedback(
@@ -334,7 +394,7 @@ MPPIHCRos::TrackingError MPPIHCRos::computeTrackingError() const
         return error;
     }
 
-    // Find closest point on path
+    // Find closest point on path (only consider points ahead, not behind)
     double min_dist = std::numeric_limits<double>::max();
     int closest_idx = 0;
     
@@ -349,6 +409,15 @@ MPPIHCRos::TrackingError MPPIHCRos::computeTrackingError() const
     }
     error.closest_idx = closest_idx;
 
+    // If we're at the end of the path (last 5 points), reduce error contribution
+    // This prevents feedback from causing wandering at goal
+    int n = static_cast<int>(ref_path_.poses.size());
+    double end_factor = 1.0;
+    if (closest_idx > n - 5) {
+        end_factor = static_cast<double>(n - closest_idx) / 5.0;
+        end_factor = std::max(0.0, end_factor);
+    }
+
     // Get path heading at closest point
     double path_yaw = tf2::getYaw(ref_path_.poses[closest_idx].pose.orientation);
 
@@ -356,16 +425,16 @@ MPPIHCRos::TrackingError MPPIHCRos::computeTrackingError() const
     // Positive = robot is to the LEFT of the path
     double dx = current_state_.x - ref_path_.poses[closest_idx].pose.position.x;
     double dy = current_state_.y - ref_path_.poses[closest_idx].pose.position.y;
-    error.lateral_error = -dx * std::sin(path_yaw) + dy * std::cos(path_yaw);
+    error.lateral_error = (-dx * std::sin(path_yaw) + dy * std::cos(path_yaw)) * end_factor;
 
     // Heading error
     error.heading_error = current_state_.yaw - path_yaw;
     // Normalize to [-pi, pi]
     while (error.heading_error > M_PI) error.heading_error -= 2.0 * M_PI;
     while (error.heading_error < -M_PI) error.heading_error += 2.0 * M_PI;
+    error.heading_error *= end_factor;
 
     // Compute local curvature using 3 points
-    int n = static_cast<int>(ref_path_.poses.size());
     int i0 = std::max(0, closest_idx - 3);
     int i2 = std::min(n - 1, closest_idx + 3);
     
@@ -391,6 +460,9 @@ MPPIHCRos::TrackingError MPPIHCRos::computeTrackingError() const
             error.path_curvature = std::copysign(error.path_curvature, cross);
         }
     }
+    
+    // Also reduce curvature near end of path
+    error.path_curvature *= end_factor;
 
     return error;
 }

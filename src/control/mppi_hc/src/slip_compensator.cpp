@@ -173,6 +173,13 @@ void SlipCompensator::resetIntegrator()
     prev_lateral_error_ = 0.0;
 }
 
+void SlipCompensator::decayIntegrator(double factor)
+{
+    factor = std::clamp(factor, 0.0, 1.0);
+    error_integral_ *= factor;
+    error_derivative_ *= factor;
+}
+
 BodyVelocity SlipCompensator::computeDelta(const BodyVelocity& planned_cmd, double slip_factor) const
 {
     BodyVelocity delta;

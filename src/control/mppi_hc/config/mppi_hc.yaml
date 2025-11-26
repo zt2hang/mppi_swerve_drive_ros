@@ -61,3 +61,12 @@ feedback:
 
 # Control timing
 control_rate: 50.0          # [Hz] Control loop frequency
+
+# Goal tolerance
+xy_goal_tolerance: 0.5      # [m] Position tolerance for goal reached
+yaw_goal_tolerance: 3.14    # [rad] Yaw tolerance for goal reached (pi = any angle)
+
+# Goal proximity behavior (prevents wandering near goal)
+goal_proximity:
+  threshold: 0.8            # [m] Distance at which feedback starts fading
+  feedback_fade: true       # Enable feedback fading near goal

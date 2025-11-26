@@ -269,6 +269,13 @@ BodyVelocity MPPIHCCore::solveWithFeedback(
         return stop_cmd;
     }
     goal_reached_ = false;
+    
+    // Near goal: aggressively decay integrator to prevent wandering
+    const double goal_proximity_threshold = 1.0;  // [m]
+    if (dist_to_goal < goal_proximity_threshold) {
+        double decay_factor = 0.9 * (dist_to_goal / goal_proximity_threshold);  // 0 at goal, 0.9 at threshold
+        slip_compensator_.decayIntegrator(decay_factor);
+    }
 
     // MPPI optimization (Layer 1)
     generateNoiseSamples();

@@ -69,6 +69,12 @@ public:
     void resetIntegrator();
 
     /**
+     * @brief Decay integrator by a factor (for near-goal behavior)
+     * @param factor Decay factor [0, 1]: 0 = full reset, 1 = no change
+     */
+    void decayIntegrator(double factor);
+
+    /**
      * @brief Compute compensation delta only
      */
     BodyVelocity computeDelta(const BodyVelocity& planned_cmd, double slip_factor) const;
