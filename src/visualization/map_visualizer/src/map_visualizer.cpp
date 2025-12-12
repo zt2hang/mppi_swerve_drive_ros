@@ -28,6 +28,11 @@ namespace visualization
         {
             publishRviz3DMapOfCylinderGarden();
         }
+        else if (map_name == "tiles" || map_name == "tiles_large")
+        {
+            // For flat tile worlds, publish nothing (avoid error spam)
+            ROS_WARN("[MapVisualizer] Map '%s' treated as flat tiles; no 3D markers published.", map_name.c_str());
+        }
         else
         {
             ROS_ERROR("[MapVisualizer] Unknown map name: %s", map_name.c_str());

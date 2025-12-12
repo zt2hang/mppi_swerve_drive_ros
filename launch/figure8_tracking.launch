@@ -4,13 +4,15 @@
   <!-- Continuous turning maximizes slip effects -->
 
   <arg name="gazebo_world_name" default="tiles_large" />
-  <arg name="wheel_friction" default="0.3" />  <!-- Low friction to emphasize slip -->
+  <arg name="wheel_friction" default="0.10" />
+  <arg name="ilc_config" default="$(find mppi_ilc)/config/mppi_ilc_low_friction.yaml" />
   <arg name="radius" default="5.0" />          <!-- Radius of figure-8 lobes -->
-  <arg name="local_planner" default="mppi_h" />
+  <arg name="local_planner" default="mppi_ilc" />
   <arg name="workspace" default="$(env HOME)/planner_code/mppi_swerve_drive_ros" />
 
   <!-- Launch Navigation -->
   <include file="$(arg workspace)/launch/navigation.launch">
+    <arg name="ilc_config" value="$(arg ilc_config)" />
     <arg name="gazebo_world_name" value="$(arg gazebo_world_name)" />
     <arg name="wheel_friction" value="$(arg wheel_friction)" />
     <arg name="local_planner" value="$(arg local_planner)" />

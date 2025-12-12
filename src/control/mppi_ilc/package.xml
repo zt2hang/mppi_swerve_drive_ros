@@ -1,0 +1,71 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>mppi_ilc</name>
+  <version>0.1.0</version>
+  <description>
+    MPPI with Iterative Learning Control (ILC) for repeated-path inspection robots.
+    Builds on mppi_hc for slip-aware dynamics and adds per-path feedforward learning
+    to reduce steady-state tracking error over repeated traversals.
+  </description>
+
+  <maintainer email="1692013141@qq.com">ZZT</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <!-- ROS core -->
+  <build_depend>roscpp</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>visualization_msgs</build_depend>
+  <build_depend>nav_msgs</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>tf2</build_depend>
+  <build_depend>tf2_geometry_msgs</build_depend>
+  <build_depend>tf2_ros</build_depend>
+
+  <!-- Grid Map -->
+  <build_depend>grid_map_core</build_depend>
+  <build_depend>grid_map_ros</build_depend>
+  <build_depend>grid_map_msgs</build_depend>
+
+  <!-- Visualization -->
+  <build_depend>jsk_rviz_plugins</build_depend>
+
+  <!-- Custom messages -->
+  <build_depend>mppi_eval_msgs</build_depend>
+
+  <!-- Base controller -->
+  <build_depend>mppi_hc</build_depend>
+
+  <!-- Export dependencies -->
+  <build_export_depend>roscpp</build_export_depend>
+  <build_export_depend>geometry_msgs</build_export_depend>
+  <build_export_depend>visualization_msgs</build_export_depend>
+  <build_export_depend>nav_msgs</build_export_depend>
+  <build_export_depend>std_msgs</build_export_depend>
+  <build_export_depend>tf2</build_export_depend>
+  <build_export_depend>tf2_geometry_msgs</build_export_depend>
+  <build_export_depend>tf2_ros</build_export_depend>
+  <build_export_depend>grid_map_core</build_export_depend>
+  <build_export_depend>grid_map_ros</build_export_depend>
+  <build_export_depend>grid_map_msgs</build_export_depend>
+  <build_export_depend>jsk_rviz_plugins</build_export_depend>
+  <build_export_depend>mppi_eval_msgs</build_export_depend>
+  <build_export_depend>mppi_hc</build_export_depend>
+
+  <!-- Exec dependencies -->
+  <exec_depend>roscpp</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>tf2</exec_depend>
+  <exec_depend>tf2_geometry_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>grid_map_core</exec_depend>
+  <exec_depend>grid_map_ros</exec_depend>
+  <exec_depend>grid_map_msgs</exec_depend>
+  <exec_depend>jsk_rviz_plugins</exec_depend>
+  <exec_depend>mppi_eval_msgs</exec_depend>
+  <exec_depend>mppi_hc</exec_depend>
+</package>

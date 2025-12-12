@@ -5,8 +5,10 @@
   <!-- often changed arguments -->
   <arg name="gazebo_world_name" default="maze" /> <!-- empty, empty_garden, cylinder_garden, maze, tiles, maze_tiles -->
   <arg name="joy_operation" default="false" />
-  <arg name="local_planner" default="mppi_hc" /> <!-- mppi_3d_a, mppi_3d_b, mppi_4d, mppi_h, mppi_hc -->
-  <arg name="wheel_friction" default="0.8" />
+  <arg name="local_planner" default="mppi_ilc" /> <!-- mppi_3d_a, mppi_3d_b, mppi_4d, mppi_h, mppi_hc, mppi_tf -->
+    <arg name="ilc_config" default="$(find mppi_ilc)/config/mppi_ilc.yaml" />
+  <arg name="mppi_tf_sampling_mode" default="velocity" /> <!-- force, velocity (for mppi_tf only) -->
+  <arg name="wheel_friction" default="0.1" />
   <arg name="use_amcl" default="true" />
 
   <!-- arguments -->
@@ -176,6 +178,60 @@
   <!-- MPPI-HC (Hierarchical Compensated MPPI with slip estimation) -->
   <group if="$(eval local_planner=='mppi_hc')">
       <include file="$(find mppi_hc)/launch/mppi_hc.launch" />
+
+      <!-- reference_costmap_generator -->
+      <include file="$(find reference_costmap_generator)/launch/reference_costmap_generator.launch" />
+
+      <!-- launch global planner -->
+      <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+          <param name="base_local_planner" value="base_local_planner/TrajectoryPlannerROS" />
+          <rosparam file="$(arg workspace)/config/base_local_planner.yaml" command="load" />
+          <rosparam file="$(arg workspace)/config/costmap_common_global.yaml" command="load" ns="global_costmap" />
+          <rosparam file="$(arg workspace)/config/costmap_common_local.yaml" command="load" ns="local_costmap" />
+          <rosparam file="$(arg workspace)/config/costmap_local.yaml" command="load" />
+          <rosparam file="$(arg workspace)/config/costmap_global.yaml" command="load" />
+          <rosparam file="$(arg workspace)/config/move_base.yaml" command="load" />
+          <remap from="cmd_vel" to="/no_use/cmd_vel"/>
+          <remap from="odom" to="$(arg odom_topic)"/>
+          <remap from="scan" to="$(arg scan_topic)"/>
+      </node>
+
+      <!-- launch vel_driver to operate 4WIDS vehicle with /cmd_vel-->
+      <include file="$(find vel_driver)/launch/vel_driver.launch" />
+  </group>
+
+  <!-- MPPI-ILC (MPPI-HC + Iterative Learning Control feedforward) -->
+  <group if="$(eval local_planner=='mppi_ilc')">
+      <include file="$(find mppi_ilc)/launch/mppi_ilc.launch">
+          <arg name="config_file" value="$(arg ilc_config)" />
+      </include>
+
+      <!-- reference_costmap_generator -->
+      <include file="$(find reference_costmap_generator)/launch/reference_costmap_generator.launch" />
+
+      <!-- launch global planner -->
+      <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+          <param name="base_local_planner" value="base_local_planner/TrajectoryPlannerROS" />
+          <rosparam file="$(arg workspace)/config/base_local_planner.yaml" command="load" />
+          <rosparam file="$(arg workspace)/config/costmap_common_global.yaml" command="load" ns="global_costmap" />
+          <rosparam file="$(arg workspace)/config/costmap_common_local.yaml" command="load" ns="local_costmap" />
+          <rosparam file="$(arg workspace)/config/costmap_local.yaml" command="load" />
+          <rosparam file="$(arg workspace)/config/costmap_global.yaml" command="load" />
+          <rosparam file="$(arg workspace)/config/move_base.yaml" command="load" />
+          <remap from="cmd_vel" to="/no_use/cmd_vel"/>
+          <remap from="odom" to="$(arg odom_topic)"/>
+          <remap from="scan" to="$(arg scan_topic)"/>
+      </node>
+
+      <!-- launch vel_driver to operate 4WIDS vehicle with /cmd_vel-->
+      <include file="$(find vel_driver)/launch/vel_driver.launch" />
+  </group>
+
+  <!-- MPPI-TF (TireForce-based MPPI with Pacejka tire model and online estimation) -->
+  <group if="$(eval local_planner=='mppi_tf')">
+      <include file="$(find mppi_tf)/launch/mppi_tf.launch">
+          <arg name="sampling_mode" value="$(arg mppi_tf_sampling_mode)" />
+      </include>
 
       <!-- reference_costmap_generator -->
       <include file="$(find reference_costmap_generator)/launch/reference_costmap_generator.launch" />

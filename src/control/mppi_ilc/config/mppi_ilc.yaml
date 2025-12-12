@@ -1,0 +1,72 @@
+vehicle:
+  l_f: 0.5
+  l_r: 0.5
+  d_l: 0.5
+  d_r: 0.5
+  tire_radius: 0.2
+  vx_max: 2.5
+  vy_max: 2.0
+  omega_max: 2.5
+  max_steer_angle: 1.57
+  max_wheel_vel: 10.0
+
+mppi:
+  num_samples: 2000
+  horizon: 40
+  dt: 0.033
+  lambda: 100.0
+  alpha: 0.975
+  exploration_ratio: 0.1
+  ref_velocity: 1.8
+  noise_vx: 0.4
+  noise_vy: 0.4
+  noise_omega: 0.6
+
+cost:
+  distance_error: 40.0
+  angular_error: 30.0
+  velocity_error: 10.0
+  terminal_state: 10.0
+  collision: 50.0
+  slip_risk: 15.0
+  curvature_speed: 60.0
+  yaw_rate_tracking: 25.0
+
+slip:
+  learning_rate: 0.01
+  slip_factor_min: 0.0
+  slip_factor_max: 0.3
+  excitation_threshold: 0.1
+  base_friction_coeff: 0.3
+  curvature_lookahead: 0.5
+  curvature_floor: 0.5
+  speed_margin: 0.3
+  enable_compensation: true
+  compensation_gain: 0.7
+
+feedback:
+  k_lateral: 2.5
+  k_heading: 1.0
+  k_integral: 0.5
+
+ilc:
+  enabled: true
+  reset_on_new_path: false
+  k_lateral: 0.15
+  k_heading: 0.05
+  decay: 0.995
+  max_bias_v: 0.6
+  max_bias_omega: 0.8
+  curvature_threshold: 0.10   # [1/m] reduce learning on tight turns
+  error_deadband: 0.005        # [m] / [rad] small errors ignored
+  max_update_lateral: 0.02     # limit per-step contribution from lateral error
+  max_update_heading: 0.02     # limit per-step contribution from heading error
+
+xy_goal_tolerance: 0.5
+yaw_goal_tolerance: 3.14
+
+control_rate: 50.0
+
+goal_proximity:
+  threshold: 0.8
+  feedback_fade: true

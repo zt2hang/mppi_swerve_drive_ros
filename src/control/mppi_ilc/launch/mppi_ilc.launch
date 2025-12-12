@@ -1,0 +1,26 @@
+<launch>
+  <!-- Arguments -->
+  <arg name="use_sim_time" default="true" />
+  <param name="use_sim_time" value="$(arg use_sim_time)" />
+
+  <arg name="config_file" default="$(find mppi_ilc)/config/mppi_ilc.yaml" />
+  <arg name="odom_topic" default="/groundtruth_odom" />
+  <arg name="cmd_vel_topic" default="/cmd_vel" />
+  <arg name="reference_path_topic" default="/move_base/NavfnROS/plan" />
+
+  <!-- Costmap topics (match reference_costmap_generator output) -->
+  <arg name="collision_costmap_topic" default="/move_base/local_costmap/costmap" />
+  <arg name="distance_error_map_topic" default="/distance_error_map" />
+  <arg name="reference_yaw_map_topic" default="/ref_yaw_map" />
+
+  <node pkg="mppi_ilc" type="mppi_ilc_node" name="mppi_ilc" output="screen">
+    <rosparam command="load" file="$(arg config_file)" />
+
+    <remap from="odom" to="$(arg odom_topic)" />
+    <remap from="cmd_vel" to="$(arg cmd_vel_topic)" />
+    <remap from="reference_path" to="$(arg reference_path_topic)" />
+    <remap from="collision_costmap" to="$(arg collision_costmap_topic)" />
+    <remap from="distance_error_map" to="$(arg distance_error_map_topic)" />
+    <remap from="reference_yaw_map" to="$(arg reference_yaw_map_topic)" />
+  </node>
+</launch>

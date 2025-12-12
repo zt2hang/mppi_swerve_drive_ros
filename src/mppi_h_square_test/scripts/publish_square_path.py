@@ -21,6 +21,9 @@ class SquarePathPublisher:
         self.perimeter = 4 * self.straight_len + 4 * self.arc_len
         
         self.errors = []
+        self.lap_errors = []
+        self.lap_count = 0
+        self.last_lap_s = 0.0
         rospy.on_shutdown(self.print_statistics)
         
         self.current_s = 0.0
@@ -38,6 +41,7 @@ class SquarePathPublisher:
         if rospy.Time.now() - self.start_time > self.warmup_duration:
             error = self.calculate_min_distance(x, y)
             self.errors.append(error)
+            self.lap_errors.append(error)
         
         # Update current_s estimate
         # We search locally around current_s to find the closest point
@@ -65,6 +69,11 @@ class SquarePathPublisher:
             else:
                 # Allow small backward adjustment
                 self.current_s = max(best_s, self.current_s - 0.5)
+
+        # Check lap completion (use unwrapped s); handle multiple laps if large jump
+        while self.current_s - self.last_lap_s >= self.perimeter:
+            self.last_lap_s += self.perimeter
+            self.report_lap_statistics()
 
     def timer_callback(self, event):
         self.publish_local_path()
@@ -167,6 +176,24 @@ class SquarePathPublisher:
         print(f"Mean Error:    {mean_error:.4f} m")
         print(f"Max Error:     {max_error:.4f} m")
         print("="*40 + "\n")
+
+    def report_lap_statistics(self):
+        if not self.lap_errors:
+            rospy.loginfo("[SquarePath] Lap %d: no samples", self.lap_count + 1)
+            self.lap_count += 1
+            return
+
+        errors = np.array(self.lap_errors)
+        rmse = np.sqrt(np.mean(errors**2))
+        mean_error = np.mean(errors)
+        max_error = np.max(errors)
+
+        self.lap_count += 1
+        rospy.loginfo("[SquarePath] Lap %d stats -> RMSE: %.4f m, Mean: %.4f m, Max: %.4f m, Samples: %d",
+                      self.lap_count, rmse, mean_error, max_error, len(errors))
+
+        # reset for next lap
+        self.lap_errors = []
 
     def get_xy_theta(self, s):
         x, y, theta = self.get_xy_theta_centered(s)

@@ -1,10 +1,11 @@
 <launch>
   <!-- Arguments -->
   <arg name="gazebo_world_name" default="tiles_large" />
-  <arg name="wheel_friction" default="0.15" />
+  <arg name="wheel_friction" default="0.10" />
+  <arg name="ilc_config" default="$(find mppi_ilc)/config/mppi_ilc_low_friction.yaml" />
   <arg name="side_length" default="20.0" />
   <arg name="turn_radius" default="0.2" />
-  <arg name="local_planner" default="mppi_hc" /> <!-- mppi_h, mppi_hc -->
+  <arg name="local_planner" default="mppi_h" /> <!-- mppi_h, mppi_hc, mppi_ilc -->
   <arg name="workspace" default="$(env HOME)/planner_code/mppi_swerve_drive_ros" />
 
   <!-- Calculate initial pose based on side_length -->
@@ -16,6 +17,7 @@
     <arg name="gazebo_world_name" value="$(arg gazebo_world_name)" />
     <arg name="wheel_friction" value="$(arg wheel_friction)" />
     <arg name="local_planner" value="$(arg local_planner)" />
+    <arg name="ilc_config" value="$(arg ilc_config)" />
     <arg name="initial_pose_x" value="0.0" />
     <arg name="initial_pose_y" value="0.0" />
     <arg name="initial_pose_yaw" value="0.0" />
