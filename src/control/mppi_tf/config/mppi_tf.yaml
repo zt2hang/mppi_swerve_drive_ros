@@ -1,0 +1,164 @@
+# =============================================================================
+# MPPI-TireForce Controller Configuration
+# 
+# This configuration file contains all parameters for the MPPI-TireForce
+# controller. Parameters are organized into logical groups for clarity.
+# 
+# Author: ZZT
+# Date: 2024
+# =============================================================================
+
+# =============================================================================
+# Topics Configuration
+# =============================================================================
+odom_topic: "/groundtruth_odom"
+ref_path_topic: "/move_base/NavfnROS/plan"
+collision_costmap_topic: "/move_base/local_costmap/costmap"
+distance_error_map_topic: "/distance_error_map"
+ref_yaw_map_topic: "/ref_yaw_map"
+cmd_vel_topic: "/cmd_vel"
+
+# =============================================================================
+# Vehicle Parameters
+# =============================================================================
+vehicle:
+  # Geometry (Swerve Drive Configuration)
+  # Units: meters
+  l_f: 0.66        # Distance from CoG to front axle
+  l_r: 0.66        # Distance from CoG to rear axle
+  d_l: 0.57        # Distance from CoG to left wheels
+  d_r: 0.57        # Distance from CoG to right wheels
+  tire_radius: 0.2 # Tire radius
+
+  # Mass Properties
+  mass: 150.0      # Vehicle mass [kg]
+  Iz: 80.0         # Yaw moment of inertia [kg·m²]
+  h_cog: 0.35      # CoG height [m]
+
+  # Velocity Limits
+  vx_max: 3.0      # Max longitudinal velocity [m/s]
+  vy_max: 3.0      # Max lateral velocity [m/s]
+  omega_max: 3.0   # Max yaw rate [rad/s]
+  ax_max: 5.0      # Max longitudinal acceleration [m/s²]
+  ay_max: 5.0      # Max lateral acceleration [m/s²]
+
+# =============================================================================
+# Tire Model Parameters (Pacejka Magic Formula)
+# =============================================================================
+# F_y = D * sin(C * arctan(B * α - E * (B * α - arctan(B * α))))
+# where: D = μ * Fz (peak factor), B (stiffness factor), C (shape factor), 
+#        E (curvature factor)
+tire:
+  # Cornering stiffness [N/rad]
+  C_alpha: 50000.0
+  
+  # Longitudinal stiffness [N/unit slip]
+  C_kappa: 100000.0
+  
+  # Friction coefficients
+  mu_peak: 0.9     # Peak friction coefficient
+  mu_slide: 0.7    # Sliding friction coefficient
+  
+  # Pacejka Magic Formula coefficients
+  # Typical asphalt values: B=10, C=1.9, E=0.97
+  B: 10.0          # Stiffness factor
+  C: 1.9           # Shape factor
+  E: 0.97          # Curvature factor
+
+# =============================================================================
+# MPPI Algorithm Parameters
+# =============================================================================
+mppi:
+  # Core MPPI settings
+  num_samples: 3000           # Number of trajectory samples (K)
+  horizon: 40                 # Prediction horizon (T)
+  dt: 0.033                   # Time step [s]
+  lambda: 50.0                # Temperature parameter (lower = more exploitation, less oscillation)
+  alpha: 0.98                 # Control smoothing factor (higher = smoother)
+  exploration_ratio: 0.05     # Ratio of pure exploration samples (reduced)
+
+  # Reference velocity [m/s]
+  ref_velocity: 2.0
+
+  # Force-space sampling noise (used when sampling_mode = "force")
+  sigma_fx: 100.0             # Longitudinal force std dev [N] (reduced)
+  sigma_fy: 100.0             # Lateral force std dev [N] (reduced)
+  sigma_mz: 30.0              # Yaw moment std dev [N·m] (reduced)
+
+  # Velocity-space sampling noise (used when sampling_mode = "velocity")
+  sigma_vx: 0.3               # Longitudinal velocity std dev [m/s] (reduced)
+  sigma_vy: 0.25              # Lateral velocity std dev [m/s] (reduced for stability)
+  sigma_omega: 0.5            # Yaw rate std dev [rad/s] (reduced)
+
+# =============================================================================
+# Cost Function Weights
+# =============================================================================
+# Higher weights = more importance
+cost:
+  # Path tracking
+  distance_error: 60.0        # Cross-track error weight
+  angular_error: 30.0         # Heading error weight
+  velocity_error: 10.0        # Velocity tracking error weight
+  terminal_state: 10.0        # Terminal cost multiplier
+
+  # Safety
+  collision: 100.0            # Collision penalty weight
+
+  # Tire force utilization
+  force_utilization: 20.0     # Penalize uneven force distribution
+  friction_margin: 30.0       # Reward staying within friction circle
+  slip_angle: 15.0            # Penalize excessive slip angles
+
+  # Dynamics-aware
+  curvature_speed: 40.0       # Speed reduction in high-curvature areas
+
+  # Smoothness
+  force_change: 5.0           # Penalize rapid force changes
+
+# =============================================================================
+# Online Parameter Estimator
+# =============================================================================
+estimator:
+  # Learning rates
+  lr_cornering: 0.01          # Cornering stiffness learning rate
+  lr_friction: 0.005          # Friction coefficient learning rate
+
+  # Parameter bounds (prevent divergence)
+  C_alpha_min: 10000.0        # Min cornering stiffness [N/rad]
+  C_alpha_max: 100000.0       # Max cornering stiffness [N/rad]
+  mu_min: 0.1                 # Min friction coefficient
+  mu_max: 1.2                 # Max friction coefficient
+
+# =============================================================================
+# Feedback Gains (for real-time tracking correction)
+# =============================================================================
+# NOTE: Reduced gains to prevent oscillation/snake behavior
+feedback:
+  k_lateral: 0.8              # Lateral error feedback gain (reduced from 1.5)
+  k_heading: 0.3              # Heading error feedback gain (reduced from 0.5)
+  k_integral: 0.05            # Integral feedback gain (reduced from 0.2)
+
+# =============================================================================
+# Savitzky-Golay Filter (control smoothing)
+# =============================================================================
+sg_filter:
+  enable: true
+  half_window: 6              # Filter window half-width (increased for smoother output)
+  poly_order: 2               # Polynomial order (reduced for more smoothing)
+
+# =============================================================================
+# Goal and Control Settings
+# =============================================================================
+xy_goal_tolerance: 0.5        # Position tolerance for goal reached [m]
+yaw_goal_tolerance: 3.14      # Yaw tolerance for goal reached [rad]
+control_rate: 50.0            # Control loop frequency [Hz]
+
+# Sampling mode: "force" or "velocity"
+# - force: Sample in force space, then map to wheel commands
+# - velocity: Sample in velocity space (faster, less accurate at limits)
+sampling_mode: "velocity"
+
+# Goal proximity behavior
+goal_proximity:
+  threshold: 0.8              # Distance threshold for feedback fade [m]
+  feedback_fade: true         # Enable feedback fading near goal

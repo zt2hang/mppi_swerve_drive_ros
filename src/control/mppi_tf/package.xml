@@ -1,0 +1,99 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>mppi_tf</name>
+  <version>1.0.0</version>
+  <description>
+    MPPI-TireForce: Tire Force-based Model Predictive Path Integral Controller
+    for Omnidirectional Swerve Drive Robots.
+    
+    Key Features:
+    ============
+    1. Physics-based Tire Model
+       - Pacejka Magic Formula for lateral force
+       - Brush model for combined slip
+       - Friction circle constraint enforcement
+    
+    2. Hierarchical Force-Space Planning
+       - Layer 1: Force space sampling (Fx, Fy, Mz)
+       - Layer 2: Optimal force allocation to wheels
+       - Layer 3: Wheel command generation
+    
+    3. Online Parameter Adaptation
+       - Cornering stiffness estimation
+       - Friction coefficient estimation
+       - Real-time model update via gradient descent
+    
+    4. Advanced Cost Function
+       - Force utilization efficiency
+       - Friction margin preservation
+       - Slip angle regularization
+    
+    This controller achieves high tracking accuracy under varying friction 
+    conditions by explicitly modeling tire force generation mechanisms.
+    
+    Reference Papers:
+    - Pacejka, H. B. "Tire and Vehicle Dynamics" (2012)
+    - Williams et al. "Information Theoretic MPC for Model-Based RL" (2017)
+    - Optimization-based force allocation for over-actuated vehicles
+  </description>
+
+  <!-- Maintainer -->
+  <maintainer email="1692013141@qq.com">ZZT</maintainer>
+
+  <!-- License -->
+  <license>MIT</license>
+
+  <!-- Build Dependencies -->
+  <buildtool_depend>catkin</buildtool_depend>
+  
+  <!-- ROS Core -->
+  <build_depend>roscpp</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>visualization_msgs</build_depend>
+  <build_depend>nav_msgs</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>tf2</build_depend>
+  <build_depend>tf2_geometry_msgs</build_depend>
+  <build_depend>tf2_ros</build_depend>
+  
+  <!-- Grid Map -->
+  <build_depend>grid_map_core</build_depend>
+  <build_depend>grid_map_ros</build_depend>
+  <build_depend>grid_map_msgs</build_depend>
+  
+  <!-- Visualization -->
+  <build_depend>jsk_rviz_plugins</build_depend>
+  
+  <!-- Custom Messages -->
+  <build_depend>mppi_eval_msgs</build_depend>
+
+  <!-- Export Dependencies -->
+  <build_export_depend>roscpp</build_export_depend>
+  <build_export_depend>geometry_msgs</build_export_depend>
+  <build_export_depend>visualization_msgs</build_export_depend>
+  <build_export_depend>nav_msgs</build_export_depend>
+  <build_export_depend>std_msgs</build_export_depend>
+  <build_export_depend>tf2</build_export_depend>
+  <build_export_depend>tf2_geometry_msgs</build_export_depend>
+  <build_export_depend>tf2_ros</build_export_depend>
+  <build_export_depend>grid_map_core</build_export_depend>
+  <build_export_depend>grid_map_ros</build_export_depend>
+  <build_export_depend>grid_map_msgs</build_export_depend>
+  <build_export_depend>mppi_eval_msgs</build_export_depend>
+
+  <!-- Run Dependencies -->
+  <exec_depend>roscpp</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>tf2</exec_depend>
+  <exec_depend>tf2_geometry_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>grid_map_core</exec_depend>
+  <exec_depend>grid_map_ros</exec_depend>
+  <exec_depend>grid_map_msgs</exec_depend>
+  <exec_depend>jsk_rviz_plugins</exec_depend>
+  <exec_depend>mppi_eval_msgs</exec_depend>
+
+</package>

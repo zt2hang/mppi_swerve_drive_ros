@@ -1,117 +1,85 @@
-# MPPI-HC: Hierarchical Compensated MPPI Controller
+# MPPI-HC: 分层补偿 MPPI 控制器
 
-## Overview
+## 1. 简介 (Introduction)
 
-MPPI-HC is a Model Predictive Path Integral controller with **hierarchical slip compensation** for omnidirectional swerve drive robots. It builds upon traditional MPPI with three key innovations:
+**MPPI-HC** (Hierarchical Compensated Model Predictive Path Integral) 是一个专为在变摩擦或低摩擦表面上运行的全向舵轮驱动机器人设计的鲁棒控制框架。通过将滑移感知动力学模型与在线参数估计相结合，MPPI-HC 解决了纯运动学控制器在高滑移条件下的局限性。
 
-### Hierarchical Architecture
+该系统采用分层架构，能够同时进行最优轨迹规划、环境参数估计以及未建模动力学的补偿。
 
-```
-Layer 1: MPPI Planning Layer
-    ├── Samples trajectories in (vx, vy, ω) space
-    ├── Uses slip-aware dynamics for prediction
-    └── Evaluates with curvature-aware cost function
+## 2. 系统架构 (System Architecture)
 
-Layer 2: Slip Estimation Layer (Online Learning)
-    ├── Gradient descent learning of slip factor K_slip
-    ├── Low-pass filtering for noise rejection
-    └── Convergence detection
+控制器由三个相互作用的层级组成：
 
-Layer 3: Slip Compensation Layer (Feedforward)
-    ├── Δvy = -γ · K_slip · vx · ω
-    └── Active slip cancellation before output
-```
+### 第一层：规划层 (Slip-Aware MPPI)
+主层利用模型预测路径积分 (MPPI) 控制来采样数千条潜在轨迹。与标准 MPPI 不同，它采用**滑移感知动力学模型**来预测未来状态。该模型显式地考虑了纵向速度、横摆角速度与由此产生的侧向滑移之间的耦合关系，使规划器能够“预见”并规避高滑移风险的动作。
 
-## Key Features
+### 第二层：估计层 (Online Learning)
+在线估计器并行运行以识别滑移系数 $K_{slip}$。它使用梯度下降法最小化模型预测状态与实际机器人状态之间的预测误差。这使得控制器能够实时适应不断变化的表面摩擦条件（例如从地毯移动到瓷砖），而无需人工调整。
 
-### 1. Online Slip Estimation
-- Uses gradient descent to learn slip factor in real-time
-- Slip model: `v_slip = -K_slip · vx · ω`
-- Adapts to changing surface conditions
+### 第三层：补偿层 (Feedforward)
+最终的控制输出由前馈补偿器进行调节。基于规划的指令和估计的滑移因子，该层注入一个侧向速度分量以主动抵消预测的滑移，确保机器人在显著滑移条件下也能精准跟踪预定路径。
 
-### 2. Curvature-Aware Speed Regulation
-- Computes maximum safe cornering speed: `v_safe = sqrt(μ·g / κ_eff)`
-- Omnidirectional adaptation with curvature floor
-- Proactive deceleration before corners
+## 3. 数学公式 (Mathematical Formulation)
 
-### 3. Yaw Rate Tracking (for Omnidirectional Robots)
-- Uses heading error-based yaw rate control instead of path curvature
-- Avoids unnecessary "swing out" before turns
-- `ω_desired = -k · (yaw - yaw_ref)`
+### 3.1. 滑移感知动力学模型
+标准运动学模型假设没有侧滑。MPPI-HC 增加了一个源自机器人向心加速度的滑移项。有效侧向速度 $v_{y,eff}$ 建模为：
 
-### 4. Feedforward Slip Compensation
-- Predicts lateral slip and preemptively compensates
-- Compensation gain γ ∈ [0, 1] for tuning
+$$ v_{y,eff} = v_y - K_{slip} \cdot v_x \cdot \omega $$
 
-## Usage
+其中：
+- $v_x, v_y$: 指令体坐标系速度
+- $\omega$: 横摆角速度
+- $K_{slip}$: 可学习的滑移因子
 
-### Launch
+状态演变方程为：
+$$ \dot{x} = v_x \cos(\theta) - v_{y,eff} \sin(\theta) $$
+$$ \dot{y} = v_x \sin(\theta) + v_{y,eff} \cos(\theta) $$
+$$ \dot{\theta} = \omega $$
 
+### 3.2. 代价函数
+MPPI 优化最小化包含跟踪精度、稳定性和滑移风险的代价函数 $J$：
+
+$$ J(x, u) = w_{track} \|x - x_{ref}\|^2 + w_{slip} J_{slip} + w_{curve} J_{curve} $$
+
+*   **滑移风险代价 ($J_{slip}$)**: 惩罚预计会引起高滑移速度的控制动作。
+    $$ J_{slip} = (K_{slip} \cdot v_x \cdot \omega)^2 $$
+
+*   **曲率感知速度限制 ($J_{curve}$)**: 基于瞬时路径曲率 $\kappa$ 和摩擦系数 $\mu$ 施加动力学限制。
+    $$ v_{limit} = \sqrt{\frac{\mu g}{\kappa}} $$
+    如果机器人速度超过此限制，代价将呈指数级增加。
+
+## 4. 关键特性 (Key Features)
+
+1.  **在线滑移估计**: 使用梯度下降实时学习 $K_{slip}$，适应表面条件。
+2.  **曲率感知速度调节**: 基于估计的摩擦圆，在弯道前主动减速。
+3.  **横摆角跟踪**: 独立于路径切线优化航向，充分利用舵轮驱动的全向能力。
+4.  **前馈滑移补偿**: 在最终指令中加入 $\Delta v_y = -\gamma \cdot K_{slip} \cdot v_x \cdot \omega$ 以抵消滑移。
+
+## 5. 使用与配置 (Usage & Configuration)
+
+### 启动 (Launch)
 ```bash
-# Default configuration
+# 默认配置
 roslaunch mppi_hc mppi_hc.launch
 
-# Low friction configuration (μ = 0.3)
+# 低摩擦配置 (μ = 0.3)
 roslaunch mppi_hc mppi_hc.launch config_file:=$(rospack find mppi_hc)/config/mppi_hc_low_friction.yaml
 ```
 
-### Topics
-
-**Subscriptions:**
-- `/odom` (nav_msgs/Odometry): Robot odometry
-- `/reference_path` (nav_msgs/Path): Reference trajectory
-- `/collision_costmap` (grid_map_msgs/GridMap): Collision costs
-- `/distance_error_map` (grid_map_msgs/GridMap): Distance to reference path
-- `/reference_yaw_map` (grid_map_msgs/GridMap): Reference heading map
-
-**Publications:**
-- `/cmd_vel` (geometry_msgs/Twist): Velocity command
-- `/optimal_trajectory` (nav_msgs/Path): Planned trajectory
-- `/mppi_hc_status` (jsk_rviz_plugins/OverlayText): Status display
-
-## Configuration
-
-Key parameters in `config/mppi_hc.yaml`:
-
+### 关键参数 (`config/mppi_hc.yaml`)
 ```yaml
-# Slip estimation
 slip:
-  learning_rate: 0.01       # Adaptation speed
-  slip_factor_max: 0.3      # Maximum slip estimate
-  compensation_gain: 0.7    # Feedforward gain γ
+  learning_rate: 0.01       # K_slip 的适应速度
+  slip_factor_max: 0.3      # 滑移因子的上限
+  compensation_gain: 0.7    # 前馈增益 (0.0 到 1.0)
 
-# Cost weights
 cost:
-  slip_risk: 15.0           # Penalize high-slip inputs
-  curvature_speed: 60.0     # Curvature speed regulation
-  yaw_rate_tracking: 25.0   # Yaw rate tracking for turns
+  slip_risk: 15.0           # 滑移风险惩罚权重
+  curvature_speed: 60.0     # 速度调节权重
 ```
 
-## Academic Contribution
-
-This controller integrates:
-1. **Slip-aware dynamics** in MPPI rollouts
-2. **Online adaptive estimation** of slip parameters
-3. **Curvature-aware speed regulation** with omnidirectional adaptation
-4. **Feedforward compensation** for predictive slip cancellation
-
-These form a coherent hierarchy that improves rectangular path tracking on low-friction surfaces.
-
-## Dependencies
-
+## 6. 依赖 (Dependencies)
 - ROS Noetic
 - grid_map
 - Eigen3
 - OpenMP
-- mppi_eval_msgs
-
-## Build
-
-```bash
-cd ~/catkin_ws
-catkin build mppi_hc
-```
-
-## License
-
-MIT License

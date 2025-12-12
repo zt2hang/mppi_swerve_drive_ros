@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<!--
+  MPPI-TireForce Controller Launch File
+  
+  This launch file starts the MPPI-TireForce controller with the specified
+  configuration parameters.
+  
+  Usage:
+    roslaunch mppi_tf mppi_tf.launch
+    roslaunch mppi_tf mppi_tf.launch config:=my_config.yaml
+    roslaunch mppi_tf mppi_tf.launch sampling_mode:=force
+  
+  Author: ZZT
+  Date: 2024
+-->
+<launch>
+    <!-- Arguments -->
+    <arg name="config" default="$(find mppi_tf)/config/mppi_tf.yaml" />
+    <arg name="sampling_mode" default="velocity" doc="Sampling mode: 'force' or 'velocity'" />
+    <arg name="output" default="screen" doc="Node output: 'screen' or 'log'" />
+    
+    <!-- MPPI-TireForce Controller Node -->
+    <node pkg="mppi_tf" type="mppi_tf_node" name="mppi_tf_node" output="$(arg output)">
+        <!-- Load configuration -->
+        <rosparam file="$(arg config)" command="load" />
+        
+        <!-- Override sampling mode if specified -->
+        <param name="sampling_mode" value="$(arg sampling_mode)" />
+    </node>
+    
+</launch>
