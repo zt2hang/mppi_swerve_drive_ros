@@ -8,8 +8,11 @@ from tf.transformations import quaternion_from_euler
 class CircularPathPublisher:
     def __init__(self):
         rospy.init_node('circular_path_publisher')
-        
+
+        # Local sliding plan (keeps legacy planners working)
         self.pub_path = rospy.Publisher('/move_base/NavfnROS/plan', Path, queue_size=1, latch=True)
+        # Stable full-loop reference path (for ILC-style learning)
+        self.pub_full_path = rospy.Publisher('/reference_path_full', Path, queue_size=1, latch=True)
         self.sub_odom = rospy.Subscriber('/groundtruth_odom', Odometry, self.odom_callback)
         
         self.radius = rospy.get_param('~radius', 5.0)
@@ -52,17 +55,18 @@ class CircularPathPublisher:
 
     def timer_callback(self, event):
         self.publish_local_path()
+        self.publish_full_reference_path()
 
     def publish_local_path(self):
         path_msg = Path()
         path_msg.header.frame_id = "map"
         path_msg.header.stamp = rospy.Time.now()
-        
-        # Generate path from current_s to current_s + lookahead
+
+        # Generate local segment
         lookahead_dist = 20.0
-        ds = 0.05 # Resolution
+        ds = 0.05
         num_points = int(lookahead_dist / ds)
-        
+
         for i in range(num_points + 1):
             s = self.current_s + i * ds
             x, y, theta = self.get_xy_theta(s)
@@ -75,6 +79,27 @@ class CircularPathPublisher:
             path_msg.poses.append(pose)
             
         self.pub_path.publish(path_msg)
+
+    def publish_full_reference_path(self):
+        path_msg = Path()
+        path_msg.header.frame_id = "map"
+        path_msg.header.stamp = rospy.Time.now()
+
+        ds = 0.05
+        num_points = int(np.ceil(self.perimeter / ds))
+
+        for i in range(num_points + 1):
+            s = i * ds
+            x, y, theta = self.get_xy_theta(s)
+
+            pose = PoseStamped()
+            pose.header = path_msg.header
+            pose.pose.position.x = x
+            pose.pose.position.y = y
+            pose.pose.orientation = Quaternion(*quaternion_from_euler(0, 0, theta))
+            path_msg.poses.append(pose)
+
+        self.pub_full_path.publish(path_msg)
 
     def calculate_min_distance(self, x, y):
         dist_to_center = np.hypot(x - self.center_x, y - self.center_y)

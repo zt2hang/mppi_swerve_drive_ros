@@ -105,6 +105,15 @@ void MPPIILCRos::loadParameters()
     private_nh_.param("goal_proximity/threshold", goal_proximity_threshold_, 0.8);
     private_nh_.param("goal_proximity/feedback_fade", goal_feedback_fade_, true);
 
+    // Closest-index continuity / self-intersection robustness
+    private_nh_.param("tracking/idx_window_back", idx_window_back_, 25);
+    private_nh_.param("tracking/idx_window_fwd", idx_window_fwd_, 60);
+    private_nh_.param("tracking/idx_allow_wraparound", idx_allow_wraparound_, true);
+    private_nh_.param("tracking/closed_path_threshold", idx_closed_path_threshold_, 0.6);
+    private_nh_.param("tracking/idx_heading_weight", idx_heading_weight_, 0.4);
+    private_nh_.param("tracking/idx_heading_gate", idx_heading_gate_, 1.2);
+    private_nh_.param("tracking/global_fallback_factor", idx_global_fallback_factor_, 1.6);
+
     // ILC parameters
     private_nh_.param("ilc/enabled", ilc_enabled_, true);
     private_nh_.param("ilc/reset_on_new_path", reset_ilc_on_new_path_, true);
@@ -150,6 +159,18 @@ void MPPIILCRos::refPathCallback(const nav_msgs::Path::ConstPtr& msg)
     }
 
     ref_path_ = *msg;
+
+    // Reset continuity state on new path message
+    have_last_closest_idx_ = false;
+    last_closest_idx_ = -1;
+
+    // Determine if path is closed (for wrap-around indexing)
+    path_is_closed_ = false;
+    if (ref_path_.poses.size() >= 2) {
+        const auto& p0 = ref_path_.poses.front().pose.position;
+        const auto& pN = ref_path_.poses.back().pose.position;
+        path_is_closed_ = (std::hypot(pN.x - p0.x, pN.y - p0.y) < idx_closed_path_threshold_);
+    }
     const auto& goal_pose = msg->poses.back().pose;
     goal_state_.x = goal_pose.position.x;
     goal_state_.y = goal_pose.position.y;
@@ -204,6 +225,10 @@ void MPPIILCRos::controlTimerCallback(const ros::TimerEvent& event)
                                      goal_state_.y - current_state_.y);
 
     TrackingError error = computeTrackingError();
+
+    // Update continuity state for next cycle
+    last_closest_idx_ = error.closest_idx;
+    have_last_closest_idx_ = true;
 
     // Low-speed guard
     double current_speed = std::hypot(current_state_.vx, current_state_.vy);
@@ -301,7 +326,7 @@ void MPPIILCRos::publishCommand(const mppi_hc::BodyVelocity& cmd)
 
 void MPPIILCRos::publishVisualization()
 {
-    const auto& opt_traj = controller_->getOptimalTrajectory();
+    const auto opt_traj = controller_->getOptimalTrajectory();
     nav_msgs::Path path_msg;
     path_msg.header.stamp = ros::Time::now();
     path_msg.header.frame_id = "odom";
@@ -379,43 +404,116 @@ MPPIILCRos::TrackingError MPPIILCRos::computeTrackingError() const
         return error;
     }
 
-    double min_dist = std::numeric_limits<double>::max();
-    int closest_idx = 0;
-    for (size_t i = 0; i < ref_path_.poses.size(); ++i) {
-        double dx = ref_path_.poses[i].pose.position.x - current_state_.x;
-        double dy = ref_path_.poses[i].pose.position.y - current_state_.y;
-        double dist = std::hypot(dx, dy);
-        if (dist < min_dist) {
-            min_dist = dist;
-            closest_idx = static_cast<int>(i);
+    const int n = static_cast<int>(ref_path_.poses.size());
+
+    auto wrapAngle = [](double a) {
+        while (a > M_PI) a -= 2.0 * M_PI;
+        while (a < -M_PI) a += 2.0 * M_PI;
+        return a;
+    };
+
+    auto distToIdx = [&](int i) {
+        const auto& p = ref_path_.poses[static_cast<std::size_t>(i)].pose.position;
+        return std::hypot(p.x - current_state_.x, p.y - current_state_.y);
+    };
+
+    auto headingErrAtIdx = [&](int i) {
+        const double path_yaw = tf2::getYaw(ref_path_.poses[static_cast<std::size_t>(i)].pose.orientation);
+        return wrapAngle(current_state_.yaw - path_yaw);
+    };
+
+    // Global nearest (distance only) for fallback/recovery
+    int global_idx = 0;
+    double global_dist = std::numeric_limits<double>::max();
+    for (int i = 0; i < n; ++i) {
+        const double d = distToIdx(i);
+        if (d < global_dist) {
+            global_dist = d;
+            global_idx = i;
         }
     }
-    error.closest_idx = closest_idx;
 
-    int n = static_cast<int>(ref_path_.poses.size());
+    int best_idx = global_idx;
+    double best_dist = global_dist;
+    double best_head = headingErrAtIdx(best_idx);
+
+    if (have_last_closest_idx_ && last_closest_idx_ >= 0 && last_closest_idx_ < n) {
+        const int back = std::max(0, idx_window_back_);
+        const int fwd = std::max(0, idx_window_fwd_);
+
+        auto evalCandidate = [&](int i, int& out_idx, double& out_score, double& out_dist, double& out_head) {
+            const double d = distToIdx(i);
+            const double h = headingErrAtIdx(i);
+            const double score = d + idx_heading_weight_ * std::abs(h);
+            if (score < out_score) {
+                out_score = score;
+                out_idx = i;
+                out_dist = d;
+                out_head = h;
+            }
+        };
+
+        int win_best_idx = last_closest_idx_;
+        double win_best_score = std::numeric_limits<double>::max();
+        double win_best_dist = std::numeric_limits<double>::max();
+        double win_best_head = 0.0;
+
+        int i_min = std::max(0, last_closest_idx_ - back);
+        int i_max = std::min(n - 1, last_closest_idx_ + fwd);
+        for (int i = i_min; i <= i_max; ++i) {
+            evalCandidate(i, win_best_idx, win_best_score, win_best_dist, win_best_head);
+        }
+
+        if (path_is_closed_ && idx_allow_wraparound_) {
+            if (last_closest_idx_ + fwd >= n) {
+                const int wrap_max = (last_closest_idx_ + fwd) - (n - 1);
+                for (int i = 0; i <= std::min(n - 1, wrap_max); ++i) {
+                    evalCandidate(i, win_best_idx, win_best_score, win_best_dist, win_best_head);
+                }
+            }
+            if (last_closest_idx_ - back < 0) {
+                const int wrap_min = n + (last_closest_idx_ - back);
+                for (int i = std::max(0, wrap_min); i < n; ++i) {
+                    evalCandidate(i, win_best_idx, win_best_score, win_best_dist, win_best_head);
+                }
+            }
+        }
+
+        const bool heading_bad = (std::abs(win_best_head) > idx_heading_gate_);
+        const bool dist_bad = (win_best_dist > idx_global_fallback_factor_ * std::max(1e-6, global_dist));
+        if (!heading_bad && !dist_bad) {
+            best_idx = win_best_idx;
+            best_dist = win_best_dist;
+            best_head = win_best_head;
+        } else {
+            best_idx = global_idx;
+            best_dist = global_dist;
+            best_head = headingErrAtIdx(best_idx);
+        }
+    }
+
+    error.closest_idx = best_idx;
+
     double end_factor = 1.0;
-    if (closest_idx > n - 5) {
-        end_factor = static_cast<double>(n - closest_idx) / 5.0;
+    if (best_idx > n - 5) {
+        end_factor = static_cast<double>(n - best_idx) / 5.0;
         end_factor = std::max(0.0, end_factor);
     }
 
-    double path_yaw = tf2::getYaw(ref_path_.poses[closest_idx].pose.orientation);
-    double dx = current_state_.x - ref_path_.poses[closest_idx].pose.position.x;
-    double dy = current_state_.y - ref_path_.poses[closest_idx].pose.position.y;
+    double path_yaw = tf2::getYaw(ref_path_.poses[best_idx].pose.orientation);
+    double dx = current_state_.x - ref_path_.poses[best_idx].pose.position.x;
+    double dy = current_state_.y - ref_path_.poses[best_idx].pose.position.y;
     error.lateral_error = (-dx * std::sin(path_yaw) + dy * std::cos(path_yaw)) * end_factor;
 
-    error.heading_error = current_state_.yaw - path_yaw;
-    while (error.heading_error > M_PI) error.heading_error -= 2.0 * M_PI;
-    while (error.heading_error < -M_PI) error.heading_error += 2.0 * M_PI;
-    error.heading_error *= end_factor;
+    error.heading_error = wrapAngle(current_state_.yaw - path_yaw) * end_factor;
 
-    int i0 = std::max(0, closest_idx - 3);
-    int i2 = std::min(n - 1, closest_idx + 3);
+    int i0 = std::max(0, best_idx - 3);
+    int i2 = std::min(n - 1, best_idx + 3);
     if (i2 > i0 + 1) {
         double x0 = ref_path_.poses[i0].pose.position.x;
         double y0 = ref_path_.poses[i0].pose.position.y;
-        double x1 = ref_path_.poses[closest_idx].pose.position.x;
-        double y1 = ref_path_.poses[closest_idx].pose.position.y;
+        double x1 = ref_path_.poses[best_idx].pose.position.x;
+        double y1 = ref_path_.poses[best_idx].pose.position.y;
         double x2 = ref_path_.poses[i2].pose.position.x;
         double y2 = ref_path_.poses[i2].pose.position.y;
         double area2 = std::abs((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0));

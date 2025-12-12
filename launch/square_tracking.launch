@@ -2,11 +2,13 @@
   <!-- Arguments -->
   <arg name="gazebo_world_name" default="tiles_large" />
   <arg name="wheel_friction" default="0.10" />
-  <arg name="ilc_config" default="$(find mppi_ilc)/config/mppi_ilc_low_friction.yaml" />
+  <arg name="ilc_config" default="$(find mppi_ilc_prior)/config/mppi_ilc_prior.yaml" />
   <arg name="side_length" default="20.0" />
   <arg name="turn_radius" default="0.2" />
   <arg name="local_planner" default="mppi_h" /> <!-- mppi_h, mppi_hc, mppi_ilc -->
   <arg name="workspace" default="$(env HOME)/planner_code/mppi_swerve_drive_ros" />
+  <arg name="enable_eval_logging" default="true" />
+  <arg name="eval_log_dir" default="$(env HOME)/log" />
 
   <!-- Calculate initial pose based on side_length -->
   <!-- Start at (0, -side_length/2, 0) -->
@@ -22,6 +24,9 @@
     <arg name="initial_pose_y" value="0.0" />
     <arg name="initial_pose_yaw" value="0.0" />
     <arg name="use_amcl" value="false" />
+    <arg name="enable_eval_logging" value="$(arg enable_eval_logging)" />
+    <arg name="eval_log_dir" value="$(arg eval_log_dir)" />
+    <arg name="eval_log_tag" value="square__$(arg local_planner)" />
   </include>
 
   <!-- Publish Square Path -->

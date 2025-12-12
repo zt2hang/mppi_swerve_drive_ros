@@ -9,6 +9,8 @@
   <arg name="local_planner" default="mppi_h" />
   <arg name="ref_velocity" default="2.5" />  <!-- Higher speed -->
   <arg name="workspace" default="$(env HOME)/planner_code/mppi_swerve_drive_ros" />
+  <arg name="enable_eval_logging" default="true" />
+  <arg name="eval_log_dir" default="$(env HOME)/log" />
 
   <!-- Launch Navigation -->
   <include file="$(arg workspace)/launch/navigation.launch">
@@ -19,6 +21,9 @@
     <arg name="initial_pose_y" value="0.0" />
     <arg name="initial_pose_yaw" value="0.0" />
     <arg name="use_amcl" value="false" />
+    <arg name="enable_eval_logging" value="$(arg enable_eval_logging)" />
+    <arg name="eval_log_dir" value="$(arg eval_log_dir)" />
+    <arg name="eval_log_tag" value="highspeed_square_v$(arg ref_velocity)__$(arg local_planner)" />
   </include>
 
   <!-- Publish Square Path -->

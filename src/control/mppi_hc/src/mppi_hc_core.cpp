@@ -42,15 +42,41 @@ void MPPIHCCore::initializeMPPI()
 
     optimal_control_seq_.resize(T_);
     optimal_trajectory_.resize(T_);
+    prior_control_seq_.resize(T_);
     control_history_.resize(config_.sg_half_window);
 
     // Initialize control sequences to zero
     for (int t = 0; t < T_; ++t) {
         optimal_control_seq_[t].setZero();
+        prior_control_seq_[t].setZero();
     }
     last_command_.setZero();
 
     std::iota(cost_ranks_.begin(), cost_ranks_.end(), 0);
+}
+
+void MPPIHCCore::clearControlPrior()
+{
+    prior_enabled_ = false;
+    prior_weight_ = 0.0;
+    prior_apply_to_exploration_ = true;
+    for (auto& u : prior_control_seq_) {
+        u.setZero();
+    }
+}
+
+void MPPIHCCore::setControlPrior(const ControlSequence& prior_sequence,
+                                 double regularization_weight,
+                                 bool apply_to_exploration)
+{
+    if (prior_sequence.size() != static_cast<std::size_t>(T_)) {
+        // Size mismatch: ignore to avoid out-of-bounds.
+        return;
+    }
+    prior_control_seq_ = prior_sequence;
+    prior_enabled_ = true;
+    prior_weight_ = std::max(0.0, regularization_weight);
+    prior_apply_to_exploration_ = apply_to_exploration;
 }
 
 void MPPIHCCore::generateNoiseSamples()
@@ -93,16 +119,30 @@ void MPPIHCCore::rolloutTrajectories(
         double cost = 0.0;
 
         for (int t = 0; t < T_; ++t) {
+            Control u_center = optimal_control_seq_[t];
+            if (prior_enabled_ && prior_control_seq_.size() == static_cast<std::size_t>(T_)) {
+                u_center.vx += prior_control_seq_[t].vx;
+                u_center.vy += prior_control_seq_[t].vy;
+                u_center.omega += prior_control_seq_[t].omega;
+            }
+
             // Sample control
             Control u;
             if (k < exploration_start) {
                 // Exploitation: perturb around previous optimal
-                u.vx = optimal_control_seq_[t].vx + noise_samples_[k][t].vx;
-                u.vy = optimal_control_seq_[t].vy + noise_samples_[k][t].vy;
-                u.omega = optimal_control_seq_[t].omega + noise_samples_[k][t].omega;
+                u.vx = u_center.vx + noise_samples_[k][t].vx;
+                u.vy = u_center.vy + noise_samples_[k][t].vy;
+                u.omega = u_center.omega + noise_samples_[k][t].omega;
             } else {
                 // Exploration: pure noise
-                u = noise_samples_[k][t];
+                if (prior_enabled_ && prior_apply_to_exploration_ &&
+                    prior_control_seq_.size() == static_cast<std::size_t>(T_)) {
+                    u.vx = prior_control_seq_[t].vx + noise_samples_[k][t].vx;
+                    u.vy = prior_control_seq_[t].vy + noise_samples_[k][t].vy;
+                    u.omega = prior_control_seq_[t].omega + noise_samples_[k][t].omega;
+                } else {
+                    u = noise_samples_[k][t];
+                }
             }
             u.clamp(config_.vehicle.vx_max, config_.vehicle.vy_max, config_.vehicle.omega_max);
             
@@ -117,10 +157,16 @@ void MPPIHCCore::rolloutTrajectories(
             cost += cost_function_.stageCost(x, u, prev_u, collision_map, 
                                              distance_error_map, ref_yaw_map, goal, slip_factor);
 
+            // Optional: keep samples close to the prior-centered mean
+            if (prior_enabled_ && prior_weight_ > 0.0) {
+                Eigen::Vector3d du = u.toEigen() - u_center.toEigen();
+                cost += prior_weight_ * du.squaredNorm();
+            }
+
             // Information-theoretic cost term
             const auto& sigma = config_.mppi.sigma;
             Eigen::Vector3d sigma_inv(1.0/sigma(0), 1.0/sigma(1), 1.0/sigma(2));
-            Eigen::Vector3d u_opt = optimal_control_seq_[t].toEigen();
+                Eigen::Vector3d u_opt = u_center.toEigen();
             Eigen::Vector3d u_curr = u.toEigen();
             cost += config_.mppi.lambda * (1.0 - config_.mppi.alpha) * 
                     u_opt.cwiseProduct(sigma_inv).dot(u_curr);
@@ -202,10 +248,21 @@ BodyVelocity MPPIHCCore::solve(
     computeWeights();
     updateOptimalSequence();
 
+    // Build total control sequence (optimal + prior)
+    ControlSequence total_seq = optimal_control_seq_;
+    if (prior_enabled_ && prior_control_seq_.size() == static_cast<std::size_t>(T_)) {
+        for (int t = 0; t < T_; ++t) {
+            total_seq[t].vx += prior_control_seq_[t].vx;
+            total_seq[t].vy += prior_control_seq_[t].vy;
+            total_seq[t].omega += prior_control_seq_[t].omega;
+            total_seq[t].clamp(config_.vehicle.vx_max, config_.vehicle.vy_max, config_.vehicle.omega_max);
+        }
+    }
+
     // Apply Savitzky-Golay filter if enabled
-    Control u_optimal = optimal_control_seq_[0];
+    Control u_optimal = total_seq[0];
     if (config_.use_sg_filter && sg_initialized_) {
-        u_optimal = applyFilter(optimal_control_seq_);
+        u_optimal = applyFilter(total_seq);
     }
 
     // =========================================================================
@@ -224,11 +281,11 @@ BodyVelocity MPPIHCCore::solve(
     State x = current_state;
     state_cost_ = 0.0;
     for (int t = 0; t < T_; ++t) {
-        x = dynamics_.step(x, optimal_control_seq_[t], config_.mppi.step_dt, slip_factor);
+        x = dynamics_.step(x, total_seq[t], config_.mppi.step_dt, slip_factor);
         optimal_trajectory_[t] = x;
         
-        Control prev_u = (t == 0) ? last_command_ : optimal_control_seq_[t-1];
-        state_cost_ += cost_function_.stageCost(x, optimal_control_seq_[t], prev_u,
+        Control prev_u = (t == 0) ? last_command_ : total_seq[t-1];
+        state_cost_ += cost_function_.stageCost(x, total_seq[t], prev_u,
                                                 collision_map, distance_error_map, 
                                                 ref_yaw_map, goal, slip_factor);
     }
@@ -283,10 +340,21 @@ BodyVelocity MPPIHCCore::solveWithFeedback(
     computeWeights();
     updateOptimalSequence();
 
+    // Build total control sequence (optimal + prior)
+    ControlSequence total_seq = optimal_control_seq_;
+    if (prior_enabled_ && prior_control_seq_.size() == static_cast<std::size_t>(T_)) {
+        for (int t = 0; t < T_; ++t) {
+            total_seq[t].vx += prior_control_seq_[t].vx;
+            total_seq[t].vy += prior_control_seq_[t].vy;
+            total_seq[t].omega += prior_control_seq_[t].omega;
+            total_seq[t].clamp(config_.vehicle.vx_max, config_.vehicle.vy_max, config_.vehicle.omega_max);
+        }
+    }
+
     // Apply Savitzky-Golay filter if enabled
-    Control u_optimal = optimal_control_seq_[0];
+    Control u_optimal = total_seq[0];
     if (config_.use_sg_filter && sg_initialized_) {
-        u_optimal = applyFilter(optimal_control_seq_);
+        u_optimal = applyFilter(total_seq);
     }
 
     // =========================================================================
@@ -311,11 +379,11 @@ BodyVelocity MPPIHCCore::solveWithFeedback(
     State x = current_state;
     state_cost_ = 0.0;
     for (int t = 0; t < T_; ++t) {
-        x = dynamics_.step(x, optimal_control_seq_[t], config_.mppi.step_dt, slip_factor);
+        x = dynamics_.step(x, total_seq[t], config_.mppi.step_dt, slip_factor);
         optimal_trajectory_[t] = x;
         
-        Control prev_u = (t == 0) ? last_command_ : optimal_control_seq_[t-1];
-        state_cost_ += cost_function_.stageCost(x, optimal_control_seq_[t], prev_u,
+        Control prev_u = (t == 0) ? last_command_ : total_seq[t-1];
+        state_cost_ += cost_function_.stageCost(x, total_seq[t], prev_u,
                                                 collision_map, distance_error_map, 
                                                 ref_yaw_map, goal, slip_factor);
     }

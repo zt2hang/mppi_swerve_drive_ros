@@ -72,6 +72,19 @@ private:
     nav_msgs::Path ref_path_;
     ros::Time last_control_time_;
 
+    // Closest-index continuity (avoid branch jumping on self-intersections)
+    int last_closest_idx_ = -1;
+    bool have_last_closest_idx_ = false;
+    bool path_is_closed_ = false;
+
+    int idx_window_back_ = 25;
+    int idx_window_fwd_ = 60;
+    bool idx_allow_wraparound_ = true;
+    double idx_closed_path_threshold_ = 0.6;   // [m]
+    double idx_heading_weight_ = 0.4;          // [m/rad]
+    double idx_heading_gate_ = 1.2;            // [rad]
+    double idx_global_fallback_factor_ = 1.6;
+
     double goal_proximity_threshold_ = 0.8;
     bool goal_feedback_fade_ = true;
 

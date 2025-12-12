@@ -1,12 +1,11 @@
 <launch>
-  <!-- Figure-8 Path Tracking Test -->
-  <!-- This scenario is designed to test slip compensation effectiveness -->
-  <!-- Continuous turning maximizes slip effects -->
+  <!-- Racetrack (stadium) closed-loop tracking test -->
 
   <arg name="gazebo_world_name" default="tiles_large" />
   <arg name="wheel_friction" default="0.10" />
   <arg name="ilc_config" default="$(find mppi_ilc_prior)/config/mppi_ilc_prior.yaml" />
-  <arg name="radius" default="5.0" />          <!-- Radius of figure-8 lobes -->
+  <arg name="straight_length" default="20.0" />
+  <arg name="radius" default="3.0" />
   <arg name="local_planner" default="mppi_ilc_prior" />
   <arg name="workspace" default="$(env HOME)/planner_code/mppi_swerve_drive_ros" />
   <arg name="enable_eval_logging" default="true" />
@@ -14,21 +13,22 @@
 
   <!-- Launch Navigation -->
   <include file="$(arg workspace)/launch/navigation.launch">
-    <arg name="ilc_config" value="$(arg ilc_config)" />
     <arg name="gazebo_world_name" value="$(arg gazebo_world_name)" />
     <arg name="wheel_friction" value="$(arg wheel_friction)" />
     <arg name="local_planner" value="$(arg local_planner)" />
+    <arg name="ilc_config" value="$(arg ilc_config)" />
     <arg name="initial_pose_x" value="0.0" />
     <arg name="initial_pose_y" value="0.0" />
     <arg name="initial_pose_yaw" value="0.0" />
     <arg name="use_amcl" value="false" />
     <arg name="enable_eval_logging" value="$(arg enable_eval_logging)" />
     <arg name="eval_log_dir" value="$(arg eval_log_dir)" />
-    <arg name="eval_log_tag" value="figure8__$(arg local_planner)" />
+    <arg name="eval_log_tag" value="racetrack__$(arg local_planner)" />
   </include>
 
-  <!-- Publish Figure-8 Path -->
-  <node pkg="mppi_h_square_test" type="publish_figure8_path.py" name="figure8_path_publisher" output="screen">
+  <!-- Publish Racetrack Path -->
+  <node pkg="mppi_h_square_test" type="publish_racetrack_path.py" name="racetrack_path_publisher" output="screen">
+    <param name="straight_length" value="$(arg straight_length)" />
     <param name="radius" value="$(arg radius)" />
   </node>
 

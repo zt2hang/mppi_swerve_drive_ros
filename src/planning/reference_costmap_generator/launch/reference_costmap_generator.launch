@@ -1,7 +1,9 @@
 <launch>
     <arg name="reference_costmap_generator_param_path" default="$(find reference_costmap_generator)/config/reference_costmap_generator.yaml" />
+    <arg name="ref_path_topic" default="/move_base/NavfnROS/plan" />
 
     <node pkg="reference_costmap_generator" type="reference_costmap_generator_node" name="reference_costmap_generator" output="screen">
         <rosparam command="load" file="$(arg reference_costmap_generator_param_path)" />
+        <param name="ref_path_topic" value="$(arg ref_path_topic)" />
     </node>
 </launch>

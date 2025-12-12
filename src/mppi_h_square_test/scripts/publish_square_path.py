@@ -8,8 +8,11 @@ from tf.transformations import quaternion_from_euler
 class SquarePathPublisher:
     def __init__(self):
         rospy.init_node('square_path_publisher')
-        
+
+        # Local sliding plan (keeps legacy planners working)
         self.pub_path = rospy.Publisher('/move_base/NavfnROS/plan', Path, queue_size=1, latch=True)
+        # Stable full-loop reference path (for ILC-style learning)
+        self.pub_full_path = rospy.Publisher('/reference_path_full', Path, queue_size=1, latch=True)
         self.sub_odom = rospy.Subscriber('/groundtruth_odom', Odometry, self.odom_callback)
         
         self.center_square_side_len = rospy.get_param('~side_length', 10.0)
@@ -77,17 +80,18 @@ class SquarePathPublisher:
 
     def timer_callback(self, event):
         self.publish_local_path()
+        self.publish_full_reference_path()
 
     def publish_local_path(self):
         path_msg = Path()
         path_msg.header.frame_id = "map"
         path_msg.header.stamp = rospy.Time.now()
-        
-        # Generate path from current_s to current_s + lookahead
+
+        # Generate a local path segment from current_s to current_s + lookahead.
         lookahead_dist = 20.0
-        ds = 0.02 # Higher resolution for sharper corners
+        ds = 0.02  # higher resolution for sharper corners
         num_points = int(lookahead_dist / ds)
-        
+
         for i in range(num_points + 1):
             s = self.current_s + i * ds
             x, y, theta = self.get_xy_theta(s)
@@ -100,7 +104,28 @@ class SquarePathPublisher:
             path_msg.poses.append(pose)
             
         self.pub_path.publish(path_msg)
-        # rospy.loginfo_throttle(5.0, "Published local path from s=%.2f", self.current_s)
+
+    def publish_full_reference_path(self):
+        path_msg = Path()
+        path_msg.header.frame_id = "map"
+        path_msg.header.stamp = rospy.Time.now()
+
+        # Publish the full closed-loop reference path (stable indexing for learning).
+        ds = 0.05
+        num_points = int(np.ceil(self.perimeter / ds))
+
+        for i in range(num_points + 1):
+            s = i * ds
+            x, y, theta = self.get_xy_theta(s)
+
+            pose = PoseStamped()
+            pose.header = path_msg.header
+            pose.pose.position.x = x
+            pose.pose.position.y = y
+            pose.pose.orientation = Quaternion(*quaternion_from_euler(0, 0, theta))
+            path_msg.poses.append(pose)
+
+        self.pub_full_path.publish(path_msg)
 
     def calculate_min_distance(self, x, y):
         # Shift coordinate to match the centered square definition

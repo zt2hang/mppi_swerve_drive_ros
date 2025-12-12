@@ -57,10 +57,18 @@ ilc:
   decay: 0.995
   max_bias_v: 0.6
   max_bias_omega: 0.8
-  curvature_threshold: 0.10   # [1/m] reduce learning on tight turns
-  error_deadband: 0.005        # [m] / [rad] small errors ignored
-  max_update_lateral: 0.02     # limit per-step contribution from lateral error
-  max_update_heading: 0.02     # limit per-step contribution from heading error
+
+  # Inject as MPPI control prior
+  prior_weight: 0.0              # >0 adds quadratic cost on deviation from prior-centered mean
+  prior_apply_to_exploration: true
+  prior_use_arclength: true      # idx(t) from arclength + speed prediction
+  prior_speed_min: 0.2           # [m/s] fallback speed for indexing
+  prior_index_step: 1            # fallback when prior_use_arclength=false
+
+  curvature_threshold: 0.10
+  error_deadband: 0.005
+  max_update_lateral: 0.02
+  max_update_heading: 0.02
 
 xy_goal_tolerance: 0.5
 yaw_goal_tolerance: 3.14

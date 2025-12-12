@@ -3,16 +3,25 @@
   <arg name="gazebo_world_name" default="tiles_large" />
   <arg name="wheel_friction" default="0.3" />
   <arg name="radius" default="10.0" />
+  <arg name="ilc_config" default="$(find mppi_ilc_prior)/config/mppi_ilc_prior.yaml" />
+  <arg name="local_planner" default="mppi_ilc_prior" />
   <arg name="workspace" default="$(env HOME)/planner_code/mppi_swerve_drive_ros" />
+  <arg name="enable_eval_logging" default="true" />
+  <arg name="eval_log_dir" default="$(env HOME)/log" />
 
   <!-- Launch Navigation -->
   <include file="$(arg workspace)/launch/navigation.launch">
     <arg name="gazebo_world_name" value="$(arg gazebo_world_name)" />
     <arg name="wheel_friction" value="$(arg wheel_friction)" />
+    <arg name="local_planner" value="$(arg local_planner)" />
+    <arg name="ilc_config" value="$(arg ilc_config)" />
     <arg name="initial_pose_x" value="0.0" />
     <arg name="initial_pose_y" value="0.0" />
     <arg name="initial_pose_yaw" value="0.0" />
     <arg name="use_amcl" value="false" />
+    <arg name="enable_eval_logging" value="$(arg enable_eval_logging)" />
+    <arg name="eval_log_dir" value="$(arg eval_log_dir)" />
+    <arg name="eval_log_tag" value="circular__$(arg local_planner)" />
   </include>
 
   <!-- Publish Circular Path -->

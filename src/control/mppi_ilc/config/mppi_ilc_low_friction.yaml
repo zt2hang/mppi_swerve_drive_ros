@@ -70,3 +70,12 @@ control_rate: 50.0
 goal_proximity:
   threshold: 0.8
   feedback_fade: true
+
+tracking:
+  idx_window_back: 25
+  idx_window_fwd: 60
+  idx_allow_wraparound: true
+  closed_path_threshold: 0.6
+  idx_heading_weight: 0.4
+  idx_heading_gate: 1.2
+  global_fallback_factor: 1.6

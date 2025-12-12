@@ -126,6 +126,19 @@ public:
         slip_compensator_.setFeedbackGains(k_lateral, k_heading, k_integral);
     }
 
+    // ---------------------------------------------------------------------
+    // Control prior (external feedforward / learned bias)
+    // ---------------------------------------------------------------------
+    // Prior is added to the MPPI mean control during sampling and to the
+    // returned command. It can also be regularized in the cost.
+    void clearControlPrior();
+    void setControlPrior(const ControlSequence& prior_sequence,
+                         double regularization_weight = 0.0,
+                         bool apply_to_exploration = true);
+    bool hasControlPrior() const { return prior_enabled_; }
+    double getControlPriorWeight() const { return prior_weight_; }
+    ControlSequence getControlPriorSequence() const { return prior_control_seq_; }
+
 private:
     ControllerConfig config_;
 
@@ -151,6 +164,12 @@ private:
     ControlSequence optimal_control_seq_;  // (T)
     StateSequence optimal_trajectory_;     // (T)
     BodyVelocity last_command_;
+
+    // External control prior (added to mean control)
+    bool prior_enabled_ = false;
+    bool prior_apply_to_exploration_ = true;
+    double prior_weight_ = 0.0;  // quadratic regularization on deviation from prior-mean
+    ControlSequence prior_control_seq_;  // (T)
     
     // Status
     bool goal_reached_ = false;
